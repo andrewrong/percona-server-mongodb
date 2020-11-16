@@ -50,6 +50,10 @@ class TicketImpl;
  * to be run. The database must then call additional methods on the TransportLayer
  * to manage the Session in a get-Message, handle-Message, return-Message cycle.
  * It must do this on its own thread(s).
+ * 
+ * 创建session与endpoint之间的map，通过新的session来访问db; db通过毁掉在transportLayer上面的方法
+ * 来管理session的接收消息、处理消息和返回消息；
+ * session必须在自己的线程上
  *
  * References to the TransportLayer should be stored on service context objects.
  */
@@ -66,6 +70,7 @@ public:
 
     /**
      * Stats for sessions open in the Transport Layer.
+     * 在传输层上面打开的session的状态信息
      */
     struct Stats {
         /**
@@ -91,6 +96,8 @@ public:
 
     /**
      * Source (receive) a new Message for this Session.
+     * 
+     * 从一个session中接收到消息
      *
      * This method returns a work Ticket. The caller must complete the Ticket by
      * passing it to either TransportLayer::wait() or TransportLayer::asyncWait().
@@ -108,6 +115,8 @@ public:
     /**
      * Sink (send) a new Message for this Session. This method should be used
      * to send replies to a given host.
+     * 
+     * 对一个session发送一个信息
      *
      * This method returns a work Ticket. The caller must complete the Ticket by
      * passing it to either TransportLayer::wait() or TransportLayer::asyncWait().
@@ -127,7 +136,7 @@ public:
     /**
      * Perform a synchronous wait on the given work Ticket. When this call returns,
      * the Ticket will have been completed. A call to wait() consumes the Ticket.
-     *
+     * 同步等到的过程,如果在函数返回获得了ticket就说明获得了信息
      * This thread may be used by the TransportLayer to run other Tickets that were
      * enqueued prior to this call.
      */
@@ -150,6 +159,8 @@ public:
     /**
      * Return the stored X509 peer information for this session. If the session does not
      * exist in this TransportLayer, returns a default constructed object.
+     * 
+     * 返回当前session的peer信息
      */
     virtual SSLPeerInfo getX509PeerInfo(const ConstSessionHandle& session) const = 0;
 
@@ -178,12 +189,16 @@ public:
      *
      * If a non-empty TagMask is provided, endAllSessions() will skip over sessions with matching
      * tags and leave them open.
+     * 
+     * 关闭所有符合要求的活跃的session
      */
     virtual void endAllSessions(Session::TagMask tags) = 0;
 
     /**
      * Start the TransportLayer. After this point, the TransportLayer will begin accepting active
      * sessions from new transport::Endpoints.
+     * 
+     * transportLayer开始，从这之后，这个会开始接收请求，请求来了就会创建一个session就接收请求
      */
     virtual Status start() = 0;
 

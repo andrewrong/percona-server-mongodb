@@ -34,6 +34,7 @@ namespace mongo {
 // If you create a local static instance of this class, that instance will be destroyed
 // before all global static objects are destroyed, so _destroyingStatics will be set
 // to true before the global static variables are destroyed.
+// 用来管理所有的全局变量的销毁，只有全局变量都销毁了它才销毁
 class StaticObserver {
     MONGO_DISALLOW_COPYING(StaticObserver);
 

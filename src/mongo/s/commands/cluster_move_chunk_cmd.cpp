@@ -188,6 +188,7 @@ public:
         chunkType.setShard(chunk->getShardId());
         chunkType.setVersion(cm->getVersion());
 
+        //mongos将这条命令发送给configservice
         uassertStatusOK(configsvr_client::moveChunk(opCtx,
                                                     chunkType,
                                                     to->getId(),

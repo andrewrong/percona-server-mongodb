@@ -101,6 +101,7 @@ protected:
             }
     }
 
+    //失效,本质上是如果设置了这个之后就不需要执行修复函数
     mutable bool dismissed_;
 
 public:

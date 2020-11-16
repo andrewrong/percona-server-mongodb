@@ -59,6 +59,8 @@ namespace {
 
 /**
  * Acquires a distributed lock for the specified collection or throws if lock cannot be acquired.
+ * 对于一个具体的集合获得一个分布式锁;
+ * 
  */
 DistLockManager::ScopedDistLock acquireCollectionDistLock(OperationContext* txn,
                                                           const MoveChunkRequest& args) {
@@ -155,6 +157,7 @@ public:
 
         // Make sure we're as up-to-date as possible with shard information. This catches the case
         // where we might have changed a shard's host by removing/adding a shard with the same name.
+        // 与shard的链接进行重新load和更新，保证最新状态
         grid.shardRegistry()->reload(txn);
 
         auto scopedRegisterMigration =
@@ -204,6 +207,7 @@ private:
         // Resolve the donor and recipient shards and their connection string
         auto const shardRegistry = Grid::get(txn)->shardRegistry();
 
+        // 获得源和目的点的shard的链接
         const auto donorConnStr =
             uassertStatusOK(shardRegistry->getShard(txn, moveChunkRequest.getFromShardId()))
                 ->getConnString();
@@ -216,6 +220,7 @@ private:
         }());
 
         string unusedErrMsg;
+        //总共7步
         MoveTimingHelper moveTimingHelper(txn,
                                           "from",
                                           moveChunkRequest.getNss().ns(),
@@ -233,11 +238,13 @@ private:
 
         {
             // Acquire the collection distributed lock if necessary
+            // 获得集合的分布式锁, 参数传过来是false
             boost::optional<DistLockManager::ScopedDistLock> scopedCollectionDistLock;
             if (moveChunkRequest.getTakeDistLock()) {
                 scopedCollectionDistLock = acquireCollectionDistLock(txn, moveChunkRequest);
             }
 
+            //生成一个迁移源管理器，后面所有的操作由这个来管理
             MigrationSourceManager migrationSourceManager(
                 txn, moveChunkRequest, donorConnStr, recipientHost);
 
@@ -267,6 +274,7 @@ private:
                 }
             }
 
+            //进入关键期
             uassertStatusOKWithWarning(migrationSourceManager.enterCriticalSection(txn));
             uassertStatusOKWithWarning(migrationSourceManager.commitChunkOnRecipient(txn));
             moveTimingHelper.done(5);

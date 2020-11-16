@@ -49,6 +49,7 @@ namespace {
 // Used to generate sequence numbers to assign to each newly created ChunkManager
 AtomicUInt32 nextCMSequenceNumber(0);
 
+//检查类型是否统一
 void checkAllElementsAreOfType(BSONType type, const BSONObj& o) {
     for (const auto&& element : o) {
         uassert(ErrorCodes::ConflictingOperationInProgress,
@@ -102,6 +103,7 @@ std::shared_ptr<Chunk> ChunkManager::findIntersectingChunkWithSimpleCollation(
     return findIntersectingChunk(shardKey, CollationSpec::kSimpleSpec);
 }
 
+//根据查询来获得相关的shard
 void ChunkManager::getShardIdsForQuery(OperationContext* txn,
                                        const BSONObj& query,
                                        const BSONObj& collation,
@@ -124,6 +126,7 @@ void ChunkManager::getShardIdsForQuery(OperationContext* txn,
     }
 
     // Fast path for targeting equalities on the shard key.
+    // 提取shardKey
     auto shardKeyToFind = _shardKeyPattern.extractShardKeyFromQuery(*cq);
     if (!shardKeyToFind.isEmpty()) {
         try {
@@ -192,6 +195,7 @@ void ChunkManager::getShardIdsForRange(const BSONObj& min,
     }
 }
 
+// 获得所有的shard
 void ChunkManager::getAllShardIds(std::set<ShardId>* all) const {
     std::transform(_chunkMapViews.shardVersions.begin(),
                    _chunkMapViews.shardVersions.end(),
@@ -345,7 +349,7 @@ ChunkManager::ChunkMapViews ChunkManager::_constructChunkMapViews(const OID& epo
 
     ChunkRangeMap chunkRangeMap =
         SimpleBSONObjComparator::kInstance.makeBSONObjIndexedMap<ShardAndChunkRange>();
-
+    // 每一个shard的当前coll最大的版本
     ShardVersionMap shardVersions;
 
     ChunkMap::const_iterator current = chunkMap.cbegin();
@@ -363,6 +367,7 @@ ChunkManager::ChunkMapViews ChunkManager::_constructChunkMapViews(const OID& epo
 
         auto& maxShardVersion = shardVersionIt->second;
 
+        // chunkmap是有序的map，估计是按照shardId为前缀
         current = std::find_if(
             current,
             chunkMap.cend(),
@@ -380,6 +385,7 @@ ChunkManager::ChunkMapViews ChunkManager::_constructChunkMapViews(const OID& epo
 
         const auto rangeLast = std::prev(current);
 
+        //当前shard某一个coll的对应的范围
         const BSONObj rangeMin = firstChunkInRange->getMin();
         const BSONObj rangeMax = rangeLast->second->getMax();
 

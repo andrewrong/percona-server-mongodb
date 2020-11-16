@@ -191,6 +191,7 @@ private:
         const DistLockHandle distLockHandle;
 
         // Contains a set of migrations which are currently active for this namespace.
+        // 维护当前ns的正在迁移的任务
         MigrationsList migrations;
     };
 
@@ -306,6 +307,7 @@ private:
 
     // Holds information about each collection's distributed lock and active migrations via a
     // CollectionMigrationState object.
+    // configsvr来维护分布式锁，只要锁住就好; 锁住了就不需要校验了；只是为了防止其他的configsvr相互竞争
     CollectionMigrationsStateMap _activeMigrationsWithDistLock;
 
     // Holds information about migrations, which have been scheduled without the collection

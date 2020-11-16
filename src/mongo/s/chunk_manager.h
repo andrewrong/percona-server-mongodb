@@ -48,6 +48,7 @@ struct QuerySolutionNode;
 class OperationContext;
 
 // Ordered map from the max for each chunk to an entry describing the chunk
+// 构建chunk的最大值与chunk之间的关系
 using ChunkMap = BSONObjIndexedMap<std::shared_ptr<Chunk>>;
 
 // Map from a shard is to the max chunk version on that shard
@@ -208,6 +209,7 @@ private:
 
         // Map from shard id to the maximum chunk version for that shard. If a shard contains no
         // chunks, it won't be present in this map.
+        // 每一个shard对应当前shard最大的chunk版本;如果shard没有任何chunk你那么就不会出现在这个map中
         const ShardVersionMap shardVersions;
     };
 
@@ -224,6 +226,7 @@ private:
     const NamespaceString _nss;
 
     // The key pattern used to shard the collection
+    // shardKey的策略，hash or range
     const ShardKeyPattern _shardKeyPattern;
 
     // Default collation to use for routing data queries for this collection
@@ -237,12 +240,15 @@ private:
     const ChunkMap _chunkMap;
 
     // Different transformations of the chunk map for efficient querying
+    // 为了有效的查询来包含不同的chunk map的变化
     const ChunkMapViews _chunkMapViews;
 
     // Max version across all chunks
+    // 当前管理的chunk的最大版本
     const ChunkVersion _collectionVersion;
 
     // Auto-split throttling state (state mutable by write commands)
+    // 自动分裂
     struct AutoSplitThrottle {
     public:
         AutoSplitThrottle() : _splitTickets(maxParallelSplits) {}

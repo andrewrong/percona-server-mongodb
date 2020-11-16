@@ -196,6 +196,7 @@ Status DistLockCatalogImpl::ping(OperationContext* txn, StringData processID, Da
         FindAndModifyRequest::makeUpdate(_lockPingNS,
                                          BSON(LockpingsType::process() << processID),
                                          BSON("$set" << BSON(LockpingsType::ping(ping))));
+    //如果没有的话就插入                                     
     request.setUpsert(true);
     request.setWriteConcern(kMajorityWriteConcern);
 
@@ -211,6 +212,7 @@ Status DistLockCatalogImpl::ping(OperationContext* txn, StringData processID, Da
     return findAndModifyStatus.getStatus();
 }
 
+//从unlock -> lock ==
 StatusWith<LocksType> DistLockCatalogImpl::grabLock(OperationContext* txn,
                                                     StringData lockID,
                                                     const OID& lockSessionID,
@@ -219,6 +221,7 @@ StatusWith<LocksType> DistLockCatalogImpl::grabLock(OperationContext* txn,
                                                     Date_t time,
                                                     StringData why,
                                                     const WriteConcernOptions& writeConcern) {
+    // 新的lock信息                                                 
     BSONObj newLockDetails(BSON(
         LocksType::lockID(lockSessionID) << LocksType::state(LocksType::LOCKED) << LocksType::who()
                                          << who
@@ -227,7 +230,7 @@ StatusWith<LocksType> DistLockCatalogImpl::grabLock(OperationContext* txn,
                                          << LocksType::when(time)
                                          << LocksType::why()
                                          << why));
-
+    // 更新锁的状态和时间，前提是lock属于未锁状态,如果没有这条信息就进行插入
     auto request = FindAndModifyRequest::makeUpdate(
         _locksNS,
         BSON(LocksType::name() << lockID << LocksType::state(LocksType::UNLOCKED)),

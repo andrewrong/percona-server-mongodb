@@ -636,6 +636,7 @@ ChunkVersion ShardingState::_refreshMetadata(OperationContext* txn, const Namesp
     }
 
     {
+        //获得coll的读意向锁
         AutoGetCollection autoColl(txn, nss, MODE_IS);
         auto css = CollectionShardingState::get(txn, nss);
 

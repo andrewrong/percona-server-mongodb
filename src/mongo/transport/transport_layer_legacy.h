@@ -47,6 +47,7 @@ class ServiceEntryPoint;
 namespace transport {
 
 /**
+ * 传统网络架构，每连接每线程
  * A TransportLayer implementation based on legacy networking primitives (the Listener,
  * AbstractMessagingPort).
  */
@@ -107,6 +108,7 @@ private:
 
     /**
      * Connection object, to associate Sessions with AbstractMessagingPorts.
+     * 连接对象; 用来和外界打交道
      */
     struct Connection {
         MONGO_DISALLOW_COPYING(Connection);
@@ -126,6 +128,7 @@ private:
 
     /**
      * An implementation of the Session interface for this TransportLayer.
+     * 传统网络模式下面的session
      */
     class LegacySession : public Session {
         MONGO_DISALLOW_COPYING(LegacySession);
@@ -182,6 +185,8 @@ private:
     /**
      * A TicketImpl implementation for this TransportLayer. WorkHandle is a callable that
      * can be invoked to fill this ticket.
+     * 
+     * ticket的实现
      */
     class LegacyTicket : public TicketImpl {
         MONGO_DISALLOW_COPYING(LegacyTicket);
@@ -202,19 +207,23 @@ private:
          * Run this ticket's work item.
          */
         Status fill(AbstractMessagingPort* amp);
-
     private:
+
+        //关联的session
         std::weak_ptr<LegacySession> _session;
 
         SessionId _sessionId;
+        //过期的时间
         Date_t _expiration;
-
+        //处理的方法, 返回Status
         WorkHandle _fill;
     };
 
     /**
      * This Listener wraps the interface in listen.h so that we may implement our own
      * version of accepted().
+     * 
+     * 封装本身的listen来支持自定义的特性
      */
     class ListenerLegacy : public Listener {
     public:
@@ -229,17 +238,21 @@ private:
         }
 
     private:
+    //接收到请求之后，回调函数
         NewConnectionCb _accepted;
     };
 
     void _closeConnection(Connection* conn);
 
+    //业务入口层，消息传递给它，从它这边获得消息
     ServiceEntryPoint* _sep;
 
+    //一个线程用于listen
     std::unique_ptr<Listener> _listener;
     stdx::thread _listenerThread;
 
     // TransportLayerLegacy holds non-owning pointers to all of its sessions.
+    // 传输层会获得所有的session，但是只是弱引用
     mutable stdx::mutex _sessionsMutex;
     stdx::list<std::weak_ptr<LegacySession>> _sessions;
 

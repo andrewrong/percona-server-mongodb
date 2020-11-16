@@ -100,17 +100,22 @@ public:
     /**
      * Performs bootstrapping for the manager. Implementation do not need to guarantee
      * thread safety so callers should employ proper synchronization when calling this method.
+     * 
+     * 执行一个manager的启动，执行不能保证线程安全，所以调用者需要同步的方式调用
      */
     virtual void startUp() = 0;
 
     /**
      * Cleanup the manager's resources. Implementations do not need to guarantee thread safety
      * so callers should employ proper synchronization when calling this method.
+     * 
+     * 关闭这个manager
      */
     virtual void shutDown(OperationContext* txn) = 0;
 
     /**
      * Returns the process ID for this DistLockManager.
+     * 获得这个manager对应的进程号
      */
     virtual std::string getProcessID() = 0;
 
@@ -121,11 +126,14 @@ public:
      *
      * waitFor = 0 indicates there should only be one attempt to acquire the lock, and
      * no waiting.
+     * 仅仅尝试一次获得锁，不等待
      * waitFor = -1 indicates we should retry indefinitely.
+     * 无限重试
      *
      * Returns OK if the lock was successfully acquired.
      * Returns ErrorCodes::DistributedClockSkewed when a clock skew is detected.
      * Returns ErrorCodes::LockBusy if the lock is being held.
+     * 
      */
     StatusWith<ScopedDistLock> lock(OperationContext* txn,
                                     StringData name,
@@ -139,6 +147,8 @@ public:
      * This is useful for a process running on the config primary after a failover. A lock can be
      * immediately reacquired if "lockSessionID" matches that of the lock, rather than waiting for
      * the inactive lock to expire.
+     * 
+     * 加入了sessionId的话，当configservice的primary切换之后也可以马上获得锁，而不是等待过期
      */
     virtual StatusWith<DistLockHandle> lockWithSessionID(OperationContext* txn,
                                                          StringData name,
@@ -150,6 +160,7 @@ public:
      * Specialized locking method, which only succeeds if the specified lock name is not held by
      * anyone. Uses local write concern and does not attempt to overtake the lock or check whether
      * the lock lease has expired.
+     * 
      */
     virtual StatusWith<DistLockHandle> tryLockWithLocalWriteConcern(OperationContext* txn,
                                                                     StringData name,
@@ -159,12 +170,14 @@ public:
     /**
      * Unlocks the given lockHandle. Will attempt to retry again later if the config
      * server is not reachable.
+     * unlock,如果config不可达就会进行重试
      */
     virtual void unlock(OperationContext* txn, const DistLockHandle& lockHandle) = 0;
 
     /**
      * Unlocks the lock specified by "lockHandle" and "name". Will attempt to retry again later if
      * the config server is not reachable.
+     * 同unlock
      */
     virtual void unlock(OperationContext* txn,
                         const DistLockHandle& lockHandle,
@@ -172,12 +185,15 @@ public:
 
     /**
      * Makes a best-effort attempt to unlock all locks owned by the given processID.
+     * 尽可能的揭开所有的lock
      */
     virtual void unlockAll(OperationContext* txn, const std::string& processID) = 0;
 
 protected:
     /**
      * Checks if the lockHandle still exists in the config server.
+     * 检查指定锁的锁的状态
+     * 
      */
     virtual Status checkStatus(OperationContext* txn, const DistLockHandle& lockHandle) = 0;
 };

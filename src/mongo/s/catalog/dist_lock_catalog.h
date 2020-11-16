@@ -84,6 +84,8 @@ public:
     /**
      * Attempts to update the owner of a lock identified by lockID to lockSessionID.
      * Will only be successful if lock is not held.
+     * 
+     *  尝试去更新自己的锁，主要是为了延长lock的时间
      *
      * The other parameters are for diagnostic purposes:
      * - who: unique string for the caller trying to grab the lock.
@@ -94,6 +96,8 @@ public:
      * Returns the result of the operation.
      * Returns LockStateChangeFailed if the lock acquisition cannot be done because lock
      * is already held elsewhere.
+     * 
+     * 当lock处于被锁住的状态，那么就不能进行修改
      *
      * Common status errors include socket and duplicate key errors.
      */
@@ -110,6 +114,8 @@ public:
     /**
      * Attempts to forcefully transfer the ownership of a lock from currentHolderTS
      * to lockSessionID.
+     * 
+     * 强制将当前的锁的owner切换到 locksessionid
      *
      * The other parameters are for diagnostic purposes:
      * - who: unique string for the caller trying to grab the lock.
@@ -156,6 +162,8 @@ public:
     /**
      * Get some information from the config server primary.
      * Common status errors include socket errors.
+     * 
+     * 获得configservice的主节点
      */
     virtual StatusWith<ServerInfo> getServerInfo(OperationContext* txn) = 0;
 
@@ -163,6 +171,8 @@ public:
      * Returns the lock document.
      * Returns LockNotFound if lock document doesn't exist.
      * Common status errors include socket errors.
+     * 
+     * 返回lock的文档;locksType就是locks表中的一个document
      */
     virtual StatusWith<LocksType> getLockByTS(OperationContext* txn, const OID& lockSessionID) = 0;
 
@@ -175,6 +185,7 @@ public:
     /**
      * Attempts to delete the ping document corresponding to the given processId.
      * Common status errors include socket errors.
+     * 关闭对ping的更新
      */
     virtual Status stopPing(OperationContext* txn, StringData processId) = 0;
 

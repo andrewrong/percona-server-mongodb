@@ -158,6 +158,7 @@ StatusWith<CursorId> runQueryWithoutRetrying(OperationContext* opCtx,
     auto shardRegistry = Grid::get(opCtx)->shardRegistry();
 
     // Get the set of shards on which we will run the query.
+    // 本次查询可能会涉及到的shards,有的查询可能只会涉及到一个shard，但是有的时候可能会涉及到多少shards
     std::vector<std::shared_ptr<Shard>> shards;
     if (primary) {
         shards.emplace_back(std::move(primary));
@@ -218,7 +219,8 @@ StatusWith<CursorId> runQueryWithoutRetrying(OperationContext* opCtx,
         // Build the find command, and attach shard version if necessary.
         BSONObjBuilder cmdBuilder;
         qrToForward.getValue()->asFindCommand(&cmdBuilder);
-
+        
+        //给请求带上mongos这边的最大的版本,用于对shardVersion的校验和判断
         if (chunkManager) {
             ChunkVersion version(chunkManager->getVersion(shard->getId()));
             version.appendForCommands(&cmdBuilder);
@@ -316,13 +318,16 @@ StatusWith<CursorId> ClusterFind::runQuery(OperationContext* opCtx,
                               << query.getQueryRequest().getProj()};
     }
 
+    //元数据的缓存
     auto const catalogCache = Grid::get(opCtx)->catalogCache();
 
     // Re-target and re-send the initial find command to the shards until we have established the
     // shard version.
     for (size_t retries = 1; retries <= kMaxStaleConfigRetries; ++retries) {
+        //从缓存中找对应的信息
         auto routingInfoStatus = catalogCache->getCollectionRoutingInfo(opCtx, query.nss());
         if (routingInfoStatus == ErrorCodes::NamespaceNotFound) {
+            // 如果更新了
             // If the database doesn't exist, we successfully return an empty result set without
             // creating a cursor.
             return CursorId(0);
@@ -345,6 +350,7 @@ StatusWith<CursorId> ClusterFind::runQuery(OperationContext* opCtx,
 
         const auto& status = cursorId.getStatus();
 
+        //非版本陈旧的错误
         if (!ErrorCodes::isStaleShardingError(status.code()) &&
             status != ErrorCodes::ShardNotFound) {
             // Errors other than trying to reach a non existent shard or receiving a stale
@@ -357,6 +363,7 @@ StatusWith<CursorId> ClusterFind::runQuery(OperationContext* opCtx,
                << " on attempt " << retries << " of " << kMaxStaleConfigRetries << ": "
                << redact(status);
 
+        //如果因为信息陈旧，就进行缓存无效化, 从这个结果看出，如果查询导致的路由失效是对coll失效的;
         catalogCache->onStaleConfigError(std::move(routingInfo));
     }
 

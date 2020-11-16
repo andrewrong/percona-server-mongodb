@@ -216,6 +216,7 @@ private:
 
 /**
  * Contains settings, which control the behaviour of the balancer.
+ * balancer的一些配置和行为
  */
 class BalancerConfiguration {
     MONGO_DISALLOW_COPYING(BalancerConfiguration);

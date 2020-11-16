@@ -118,7 +118,9 @@ public:
             uassertStatusOK(MigrationSessionId::extractFromBSON(cmdObj)));
 
         // Ensure this shard is not currently receiving or donating any chunks.
+        // 判断当前shard运行或者接受其他的chunk的迁移
         auto scopedRegisterReceiveChunk(
+            //注册一个接受任务,所有的迁移任务会被统一管理起来的;
             uassertStatusOK(shardingState->registerReceiveChunk(nss, chunkRange, fromShard)));
 
         // Refresh our collection manager from the config server, we need a collection manager to

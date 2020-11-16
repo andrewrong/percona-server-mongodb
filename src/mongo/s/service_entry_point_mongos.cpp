@@ -108,6 +108,7 @@ void ServiceEntryPointMongos::_sessionLoop(const transport::SessionHandle& sessi
 
         const int32_t msgId = message.header().getId();
 
+        //获得操作类型
         const NetworkOp op = message.operation();
 
         // This exception will not be returned to the caller, but will be logged and will close the

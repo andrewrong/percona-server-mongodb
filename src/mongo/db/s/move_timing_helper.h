@@ -39,6 +39,7 @@ namespace mongo {
 class BSONObj;
 class OperationContext;
 
+// movechunk的定时助手
 class MoveTimingHelper {
 public:
     MoveTimingHelper(OperationContext* txn,

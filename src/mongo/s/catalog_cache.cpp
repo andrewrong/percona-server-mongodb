@@ -87,15 +87,23 @@ std::shared_ptr<ChunkManager> refreshCollectionRoutingInfo(
         SimpleBSONObjComparator::kInstance.makeBSONObjIndexedMap<std::shared_ptr<Chunk>>();
 
     if (!existingRoutingInfo) {
+        // 如果没有基本的chunkmanager，那么就全量更新
         // If we don't have a basis chunk manager, do a full refresh
         startingCollectionVersion = ChunkVersion(0, 0, collectionAndChunks.epoch);
     } else if (existingRoutingInfo->getVersion().epoch() != collectionAndChunks.epoch) {
+        // 假如coll meta信息已经变化了的话几也全量更新
         // If the collection's epoch has changed, do a full refresh
         startingCollectionVersion = ChunkVersion(0, 0, collectionAndChunks.epoch);
     } else {
         startingCollectionVersion = existingRoutingInfo->getVersion();
+        //这个过程很耗时，copy map的过程
         chunkMap = existingRoutingInfo->chunkMap();
     }
+
+    /**
+     * 假如我优先返回一个引用，然后做判断，如果发现版本一致就不需要更新，当然我觉得
+     * 这样的可能性就很低，有变化，但是变化又被修改回去了
+     */
 
     ChunkVersion collectionVersion = startingCollectionVersion;
 
@@ -138,6 +146,8 @@ std::shared_ptr<ChunkManager> refreshCollectionRoutingInfo(
     // manager object, because the write commands' code relies on changes of the chunk manager's
     // sequence number to detect batch writes not making progress because of chunks moving across
     // shards too frequently.
+    // 可能你查询的时候有变化，但是最终的你去看变化的时候，发现它已经被搬迁回来的，所以就不需要再调整了; 因为balance的过程会很快，
+    // 有一定的延迟
     if (collectionVersion == startingCollectionVersion) {
         return existingRoutingInfo;
     }
@@ -149,6 +159,7 @@ std::shared_ptr<ChunkManager> refreshCollectionRoutingInfo(
                                               ->makeFromBSON(collectionAndChunks.defaultCollation));
     }
 
+    //构造函数本身也很耗时
     return stdx::make_unique<ChunkManager>(nss,
                                            KeyPattern(collectionAndChunks.shardKeyPattern),
                                            std::move(defaultCollator),
@@ -177,6 +188,7 @@ StatusWith<CachedCollectionRoutingInfo> CatalogCache::getCollectionRoutingInfo(
     while (true) {
         std::shared_ptr<DatabaseInfoEntry> dbEntry;
         try {
+            //返回的db的所有信息，包含了coll路由信息
             dbEntry = _getDatabase(opCtx, nss.db());
         } catch (const DBException& ex) {
             return ex.toStatus();
@@ -188,6 +200,7 @@ StatusWith<CachedCollectionRoutingInfo> CatalogCache::getCollectionRoutingInfo(
 
         auto it = collections.find(nss.ns());
         if (it == collections.end()) {
+            //没有找到对应的coll.就找到对应主shard的shard信息, 但是其实现在依然不知道能不能找到对应的路由信息
             auto shardStatus =
                 Grid::get(opCtx)->shardRegistry()->getShard(opCtx, dbEntry->primaryShardId);
             if (!shardStatus.isOK()) {
@@ -197,6 +210,7 @@ StatusWith<CachedCollectionRoutingInfo> CatalogCache::getCollectionRoutingInfo(
                                       << shardStatus.getStatus().toString()};
             }
 
+            //返回的其实是一个没有具体的路由信息的对象
             return {CachedCollectionRoutingInfo(
                 dbEntry->primaryShardId, nss, std::move(shardStatus.getValue()))};
         }
@@ -204,6 +218,7 @@ StatusWith<CachedCollectionRoutingInfo> CatalogCache::getCollectionRoutingInfo(
         auto& collEntry = it->second;
 
         if (collEntry.needsRefresh) {
+            //等待器，主要是完成当重新刷新数据完成之后要做一些事情
             auto refreshNotification = collEntry.refreshCompletionNotification;
             if (!refreshNotification) {
                 refreshNotification = (collEntry.refreshCompletionNotification =
@@ -248,7 +263,7 @@ StatusWith<CachedCollectionRoutingInfo> CatalogCache::getCollectionRoutingInfo(
     OperationContext* opCtx, StringData ns) {
     return getCollectionRoutingInfo(opCtx, NamespaceString(ns));
 }
-
+//强制刷新之后的路由信息    
 StatusWith<CachedCollectionRoutingInfo> CatalogCache::getShardedCollectionRoutingInfoWithRefresh(
     OperationContext* opCtx, const NamespaceString& nss) {
     invalidateShardedCollection(nss);
@@ -274,6 +289,7 @@ void CatalogCache::onStaleConfigError(CachedCollectionRoutingInfo&& ccriToInvali
     // input argument so it can't be used anymore
     auto ccri(ccriToInvalidate);
 
+    //非shard模式
     if (!ccri._cm) {
         // Here we received a stale config error for a collection which we previously thought was
         // unsharded.
@@ -369,6 +385,10 @@ std::shared_ptr<CatalogCache::DatabaseInfoEntry> CatalogCache::_getDatabase(Oper
         return it->second;
     }
 
+    /**
+     * 如果db缓存不存在就重新进行去刷新获得
+     */
+
     const auto catalogClient = Grid::get(opCtx)->catalogClient(opCtx);
 
     const auto dbNameCopy = dbName.toString();
@@ -388,7 +408,7 @@ std::shared_ptr<CatalogCache::DatabaseInfoEntry> CatalogCache::_getDatabase(Oper
         if (coll.getDropped()) {
             continue;
         }
-
+        //如果key不存在会创建初始化一个新的对象
         collectionEntries[coll.getNs().ns()].needsRefresh = true;
     }
 
@@ -406,6 +426,7 @@ void CatalogCache::_scheduleCollectionRefresh_inlock(
     // how many chunks are in the differential
     const bool isIncremental(existingRoutingInfo);
 
+    //增量更新
     if (isIncremental) {
         _stats.numActiveIncrementalRefreshes.addAndFetch(1);
         _stats.countIncrementalRefreshesStarted.addAndFetch(1);
@@ -461,7 +482,7 @@ void CatalogCache::_scheduleCollectionRefresh_inlock(
         }
     };
 
-    const auto refreshCallback =
+    const auto refreshCallback Couldn't get a connection within the time limit=
         [ this, dbEntry, nss, existingRoutingInfo, refreshFailed_inlock, onRefreshCompleted ](
             OperationContext * opCtx,
             StatusWith<CatalogCacheLoader::CollectionAndChangedChunks> swCollAndChunks) noexcept {
@@ -476,7 +497,7 @@ void CatalogCache::_scheduleCollectionRefresh_inlock(
             refreshFailed_inlock(ex.toStatus());
             return;
         }
-
+        //锁
         stdx::lock_guard<stdx::mutex> lg(_mutex);
 
         auto& collections = dbEntry->collections;
@@ -495,6 +516,7 @@ void CatalogCache::_scheduleCollectionRefresh_inlock(
         }
     };
 
+    //获得当前版本
     const ChunkVersion startingCollectionVersion =
         (existingRoutingInfo ? existingRoutingInfo->getVersion() : ChunkVersion::UNSHARDED());
 

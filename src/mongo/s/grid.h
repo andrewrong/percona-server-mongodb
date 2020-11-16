@@ -52,6 +52,8 @@ class TaskExecutorPool;
 /**
  * Holds the global sharding context. Single instance exists for a running server. Exists on
  * both MongoD and MongoS.
+ * 
+ * 全局维护分片上下文，单例的方式存在，在mongos和mongod之间去存在
  */
 class Grid {
 public:
@@ -60,6 +62,7 @@ public:
 
     /**
      * Retrieves the instance of Grid associated with the current service/operation context.
+     * 接收与当前service相关的grid实例
      */
     static Grid* get(ServiceContext* serviceContext);
     static Grid* get(OperationContext* operationContext);
@@ -169,10 +172,18 @@ private:
 
     // Executor pool for scheduling work and remote commands to shards and config servers. Each
     // contained executor has a connection hook set on it for sending/receiving sharding metadata.
+    /**
+     * 这个运行池是为了调度工作和运行与shards和configservice命令执行使用,每一个运行器中会
+     * 包含一个连接hook，用来发送和处理从shard的消息
+     * 
+     */
     std::unique_ptr<executor::TaskExecutorPool> _executorPool;
 
     // Network interface being used by the fixed executor in _executorPool.  Used for asking
     // questions about the network configuration, such as getting the current server's hostname.
+    /**
+     * 这个是_executorPool固定的一个运行期，专门用来回答一些网络配置的请求
+     */
     executor::NetworkInterface* _network{nullptr};
 
     // Protects _configOpTime.
@@ -180,6 +191,7 @@ private:
 
     // Last known highest opTime from the config server that should be used when doing reads.
     // This value is updated any time a shard or mongos talks to a config server or a shard.
+    // 与configservice 或者 shard 进行交互之后都会更新这个数据；估计是根据这个数据来确定当前mongos的配置时间
     repl::OpTime _configOpTime;
 
     // Deprecated. This is only used on mongos, and once addShard is solely handled by the configs,

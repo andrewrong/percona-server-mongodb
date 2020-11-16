@@ -85,6 +85,7 @@ public:
         uint64_t currSizeMB{0};
 
         // Whether the shard is in draining mode
+        // 表示shard是否是一个需要被下线的shard
         bool isDraining{false};
 
         // Set of tags for the shard

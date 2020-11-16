@@ -41,6 +41,7 @@ namespace mongo {
  * This class represents the layout and contents of documents contained in the
  * config.mongos collection. All manipulation of documents coming from that
  * collection should be done with this class.
+ * 每一个mongos都会在config.mongos中存储以下信息, 主要是用来关注mongos本身的健康度
  */
 class MongosType {
 public:
@@ -122,6 +123,16 @@ public:
 private:
     // Convention: (M)andatory, (O)ptional, (S)pecial rule.
 
+    /**
+     * 1. _name: mongos的name，唯一
+     * 2. _ping上一次ping的时间
+     * 3. _uptime:在线时间
+     * 4. _waiting: 用来标示现在的状态
+     * 5. _mongoVersion: mongod本身的版本
+     * 6. _configVersion: config的版本
+     * 7._advisoryHostFQDNs:  
+     * 
+     */
     // (M) "host:port" for this mongos
     boost::optional<std::string> _name;
     // (M) last time it was seen alive

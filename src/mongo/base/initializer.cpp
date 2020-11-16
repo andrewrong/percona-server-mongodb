@@ -70,6 +70,11 @@ Status runGlobalInitializers(const InitializerContext::ArgumentVector& args,
     return getGlobalInitializer().execute(args, env);
 }
 
+/**
+ * 初始化的过程
+ * 
+ * MONGO_INITIALIZER_GENERAL 通过这个进行全局注册
+ */
 Status runGlobalInitializers(int argc, const char* const* argv, const char* const* envp) {
     InitializerContext::ArgumentVector args(argc);
     std::copy(argv, argv + argc, args.begin());

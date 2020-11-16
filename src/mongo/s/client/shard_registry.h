@@ -130,6 +130,8 @@ private:
 };
 
 /**
+ * 维护当前实例连接的所有分片的信息，这个信息包含了连接信息 + 对分片的执行的命令;这些命令会被注册到
+ * 这个对象上面;当出现一些问题的睡好会自动被调用
  * Maintains the set of all shards known to the instance and their connections and exposes
  * functionality to run commands against shards. All commands which this registry executes are
  * retried on NotMaster class of errors and in addition all read commands are retried on network

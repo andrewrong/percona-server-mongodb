@@ -100,6 +100,7 @@ CollectionAndChangedChunks getChangedChunks(OperationContext* opCtx,
             !coll.getDropped());
 
     // If the collection's epoch has changed, do a full refresh
+    // 假如coll的版本被更新过，那就进行全量更新，估计是元信息的更新
     const ChunkVersion startingCollectionVersion = (sinceVersion.epoch() == coll.getEpoch())
         ? sinceVersion
         : ChunkVersion(0, 0, coll.getEpoch());
@@ -150,7 +151,7 @@ std::shared_ptr<Notification<void>> ConfigServerCatalogCacheLoader::getChunksSin
     stdx::function<void(OperationContext*, StatusWith<CollectionAndChangedChunks>)> callbackFn) {
 
     auto notify = std::make_shared<Notification<void>>();
-
+    //异步调用
     uassertStatusOK(_threadPool.schedule([ this, nss, version, notify, callbackFn ]() noexcept {
         auto opCtx = Client::getCurrent()->makeOperationContext();
 

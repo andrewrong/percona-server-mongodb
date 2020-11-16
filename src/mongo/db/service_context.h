@@ -90,9 +90,10 @@ protected:
 /**
  * Class representing the context of a service, such as a MongoD database service or
  * a MongoS routing service.
- *
+ *  表示一个服务的上下文，比如mongod或者mongos的context
  * A ServiceContext is the root of a hierarchy of contexts.  A ServiceContext owns
  * zero or more Clients, which in turn each own OperationContexts.
+ * 这是context的继承的基类，一个servicecontext包含有0或者多个client
  */
 class ServiceContext : public Decorable<ServiceContext> {
     MONGO_DISALLOW_COPYING(ServiceContext);

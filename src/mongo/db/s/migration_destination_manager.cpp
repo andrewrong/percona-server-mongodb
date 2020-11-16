@@ -313,6 +313,7 @@ Status MigrationDestinationManager::start(const NamespaceString& nss,
     invariant(!_scopedRegisterReceiveChunk);
 
     _state = READY;
+    // 条件变量
     _stateChangedCV.notify_all();
     _errmsg = "";
 
@@ -338,10 +339,14 @@ Status MigrationDestinationManager::start(const NamespaceString& nss,
     // TODO: If we are here, the migrate thread must have completed, otherwise _active above would
     // be false, so this would never block. There is no better place with the current implementation
     // where to join the thread.
+
+    //因为这个对象估计是全局都在用的，所以如果接受到这个命令的时候就会走到这个逻辑里面，这个时候可能前面的线程还没有完成，那么这个时候我们就需要
+    // 等待前面的完成才ok
     if (_migrateThreadHandle.joinable()) {
         _migrateThreadHandle.join();
     }
 
+    //启动一个线程来进行迁移
     _migrateThreadHandle =
         stdx::thread([this, min, max, shardKeyPattern, fromShardConnString, epoch, writeConcern]() {
             _migrateThread(min, max, shardKeyPattern, fromShardConnString, epoch, writeConcern);
@@ -447,7 +452,7 @@ bool MigrationDestinationManager::startCommit(const MigrationSessionId& sessionI
     _state = COMMIT_START;
     _stateChangedCV.notify_all();
 
-    const auto deadline = Date_t::now() + Seconds(30);
+    const auto deadjine = Date_t::now() + Seconds(30);
 
     while (_sessionId) {
         if (stdx::cv_status::timeout ==
@@ -538,6 +543,7 @@ void MigrationDestinationManager::_migrateDriver(OperationContext* txn,
           << epoch.toString() << " with session id " << *_sessionId;
 
     string errmsg;
+    //分为6步
     MoveTimingHelper timing(
         txn, "to", _nss.ns(), min, max, 6 /* steps */, &errmsg, ShardId(), ShardId());
 
@@ -548,9 +554,10 @@ void MigrationDestinationManager::_migrateDriver(OperationContext* txn,
         error() << errmsg << migrateLog;
         return;
     }
-
+    //理论上是ready状态
     invariant(initialState == READY);
 
+    //获得一个连接 
     ScopedDbConnection conn(fromShardConnString);
 
     // Just tests the connection
@@ -576,6 +583,7 @@ void MigrationDestinationManager::_migrateDriver(OperationContext* txn,
     {
         // 0. copy system.namespaces entry if collection doesn't already exist
 
+        // 0. 假如coll在这个shard都不存在，所以需要先将coll的元数据copy过来
         OldClientWriteContext ctx(txn, _nss.ns());
         if (!repl::getGlobalReplicationCoordinator()->canAcceptWritesFor(_nss)) {
             errmsg = str::stream() << "Not primary during migration: " << _nss.ns()
@@ -602,6 +610,7 @@ void MigrationDestinationManager::_migrateDriver(OperationContext* txn,
             }
 
             WriteUnitOfWork wuow(txn);
+            // 创建coll
             Status status = userCreateNS(txn, db, _nss.ns(), options, true, idIndexSpec);
             if (!status.isOK()) {
                 warning() << "failed to create collection [" << _nss << "] "
@@ -627,6 +636,7 @@ void MigrationDestinationManager::_migrateDriver(OperationContext* txn,
 
         Database* db = ctx.db();
         Collection* collection = db->getCollection(_nss);
+        //都已经到了这一步了，这个coll还是不存在，那么就一定是被删除了
         if (!collection) {
             errmsg = str::stream() << "collection dropped during migration: " << _nss.ns();
             warning() << errmsg;
@@ -634,11 +644,13 @@ void MigrationDestinationManager::_migrateDriver(OperationContext* txn,
             return;
         }
 
+        //获得当前coll的索引，与之前的索引进行diff
         MultiIndexBlock indexer(txn, collection);
         indexer.removeExistingIndexes(&indexSpecs);
 
         if (!indexSpecs.empty()) {
             // Only copy indexes if the collection does not have any documents.
+            // 假如在迁移之间操作索引的话，会导致迁移失败(coll为空)
             if (collection->numRecords(txn) > 0) {
                 errmsg = str::stream() << "aborting migration, shard is missing "
                                        << indexSpecs.size() << " indexes and "
@@ -679,6 +691,7 @@ void MigrationDestinationManager::_migrateDriver(OperationContext* txn,
             wunit.commit();
         }
 
+        // 迁移过程中，如果coll的元数据发生了变更，那就失败了，这的epoch大部分情况下是不会变化的
         Status status = _notePending(txn, _nss, min, max, epoch);
         if (!status.isOK()) {
             setState(FAIL);
@@ -691,6 +704,7 @@ void MigrationDestinationManager::_migrateDriver(OperationContext* txn,
 
     {
         // 2. Synchronously delete any data which might have been left orphaned in range being moved
+        // 2. 同步删除在这个范围内的孤儿数据; 
 
         RangeDeleterOptions deleterOptions(
             KeyRange(_nss.ns(), min.getOwned(), max.getOwned(), shardKeyPattern));
@@ -720,6 +734,7 @@ void MigrationDestinationManager::_migrateDriver(OperationContext* txn,
 
     {
         // 3. Initial bulk clone
+        // 3. 初始化bulk为了clone
         setState(CLONE);
 
         const BSONObj migrateCloneRequest = createMigrateCloneRequest(_nss, *_sessionId);
@@ -809,6 +824,7 @@ void MigrationDestinationManager::_migrateDriver(OperationContext* txn,
 
     {
         // 4. Do bulk of mods
+        // 4. 开始transferMods的请求
         setState(CATCHUP);
 
         while (true) {
@@ -826,11 +842,13 @@ void MigrationDestinationManager::_migrateDriver(OperationContext* txn,
                 break;
             }
 
+            // 请求shard的oplog数据，这就是变更之后的数据
             _applyMigrateOp(txn, _nss.ns(), min, max, shardKeyPattern, res, &lastOpApplied);
 
             const int maxIterations = 3600 * 50;
 
             int i;
+            //等待副本集的数据达到
             for (i = 0; i < maxIterations; i++) {
                 txn->checkForInterrupt();
 
@@ -867,6 +885,7 @@ void MigrationDestinationManager::_migrateDriver(OperationContext* txn,
     {
         // Pause to wait for replication. This will prevent us from going into critical section
         // until we're ready.
+        // 等待副本跟
         Timer t;
         while (t.minutes() < 600) {
             txn->checkForInterrupt();
@@ -896,6 +915,7 @@ void MigrationDestinationManager::_migrateDriver(OperationContext* txn,
 
     {
         // 5. Wait for commit
+        // 6. 进入临界区进行最后的数据追溯
         setState(STEADY);
 
         bool transferAfterCommit = false;

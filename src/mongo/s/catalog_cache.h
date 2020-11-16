@@ -47,6 +47,7 @@ class CachedCollectionRoutingInfo;
 class OperationContext;
 
 /**
+ * 分类元数据的缓存，只读不写，写操作是通过cache失效自动完成数据导入
  * This is the root of the "read-only" hierarchy of cached catalog metadata. It is read only
  * in the sense that it only reads from the persistent store, but never writes to it. Instead
  * writes happen through the ShardingCatalogManager and the cache hierarchy needs to be invalidated.
@@ -131,10 +132,12 @@ private:
     struct CollectionRoutingInfoEntry {
         // Specifies whether this cache entry needs a refresh (in which case routingInfo should not
         // be relied on) or it doesn't, in which case there should be a non-null routingInfo.
+        // 这个缓存是否需要被刷新，这个状态下的缓存香是不能被依赖的
         bool needsRefresh{true};
 
         // Contains a notification to be waited on for the refresh to complete (only available if
         // needsRefresh is true)
+        // 包含一个通知器用来等待刷新完成，这个只有当needRefresh = true的时候才有用
         std::shared_ptr<Notification<Status>> refreshCompletionNotification;
 
         // Contains the cached routing information (only available if needsRefresh is false)
@@ -145,6 +148,7 @@ private:
      * Cache entry describing a database.
      */
     struct DatabaseInfoEntry {
+        //
         ShardId primaryShardId;
 
         bool shardingEnabled;

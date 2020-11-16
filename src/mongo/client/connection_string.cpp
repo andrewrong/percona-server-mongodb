@@ -37,11 +37,13 @@
 
 namespace mongo {
 
+//master
 ConnectionString::ConnectionString(const HostAndPort& server) : _type(MASTER) {
     _servers.push_back(server);
     _finishInit();
 }
 
+//副本集, 需要设置iplist + 副本集名字
 ConnectionString::ConnectionString(StringData setName, std::vector<HostAndPort> servers)
     : _type(SET), _servers(std::move(servers)), _setName(setName.toString()) {
     _finishInit();
@@ -71,6 +73,7 @@ ConnectionString::ConnectionString(const std::string& s, ConnectionType connType
 }
 
 ConnectionString::ConnectionString(ConnectionType connType) : _type(connType), _string("<local>") {
+    //不指定name那就算是local
     invariant(_type == LOCAL);
 }
 

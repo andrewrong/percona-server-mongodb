@@ -59,6 +59,13 @@ class MongoURI;
  */
 class ConnectionString {
 public:
+    /**
+     * INVALID: 无效连接
+     * MASTER: 单机节点; 
+     * SET: 一个name对应一组IP(副本集)
+     * CUSTOM: 用户的配置方式是自定义的
+     * LOCAL:
+     */
     enum ConnectionType { INVALID, MASTER, SET, CUSTOM, LOCAL };
 
     ConnectionString() = default;
@@ -177,12 +184,14 @@ private:
     void _fillServers(std::string s);
     void _finishInit();
 
+    //连接类型
     ConnectionType _type{INVALID};
     std::vector<HostAndPort> _servers;
     std::string _string;
     std::string _setName;
 
     static stdx::mutex _connectHookMutex;
+    //连接对应的hook
     static ConnectionHook* _connectHook;
 };
 

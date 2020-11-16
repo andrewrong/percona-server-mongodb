@@ -41,7 +41,7 @@ class OperationContext;
 /**
  * Utility class, which is used to periodically record in the config server's metadata the mongos
  * instances, which are connected to the given config server and their uptime.
- *
+ * 周期性于configservice通信来更新之前的mongos信息
  * NOTE: Not thread-safe, so it should not be used from more than one thread at a time.
  */
 class ShardingUptimeReporter {

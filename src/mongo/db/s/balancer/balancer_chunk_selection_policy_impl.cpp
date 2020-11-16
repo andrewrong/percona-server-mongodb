@@ -335,6 +335,7 @@ Status BalancerChunkSelectionPolicyImpl::checkMoveAllowed(OperationContext* opCt
 
     auto shardStats = std::move(shardStatsStatus.getValue());
 
+    //movechunk会主动刷新缓存
     auto routingInfoStatus =
         Grid::get(opCtx)->catalogCache()->getShardedCollectionRoutingInfoWithRefresh(opCtx,
                                                                                      chunk.getNS());

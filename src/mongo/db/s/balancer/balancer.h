@@ -50,6 +50,9 @@ class Status;
  * servers of the cluster even. Although every mongos will have one balancer running, only one
  * of them will be active at the any given point in time. The balancer uses a distributed lock
  * for that coordination.
+ * 
+ * 平衡器是用来保持所有chunk在不同服务器之间相对均衡的任务，虽然每一个mongos都有运行这一个balancer，但是通常在给定的
+ * 时间范围内只有一个是在工作的;
  *
  * The balancer does act continuously but in "rounds". At a given round, it would decide if
  * there is an imbalance by checking the difference in chunks between the most and least
@@ -228,9 +231,11 @@ private:
     stdx::thread _migrationManagerInterruptThread;
 
     // Indicates whether the balancer is currently executing a balancer round
+    //当前balancer的运行状态
     bool _inBalancerRound{false};
 
     // Counts the number of balancing rounds performed since the balancer thread was first activated
+    //从启动到现在，已经运行了多少次
     int64_t _numBalancerRounds{0};
 
     // Condition variable, which is signalled every time the above runtime state of the balancer
@@ -238,6 +243,7 @@ private:
     stdx::condition_variable _condVar;
 
     // Number of moved chunks in last round
+    //最后一次round，movechunks了多少次
     int _balancedLastTime;
 
     // Source of randomness when metadata needs to be randomized.
@@ -252,6 +258,7 @@ private:
     std::unique_ptr<BalancerChunkSelectionPolicy> _chunkSelectionPolicy;
 
     // Migration manager used to schedule and manage migrations
+    // 迁移管理器
     MigrationManager _migrationManager;
 };
 

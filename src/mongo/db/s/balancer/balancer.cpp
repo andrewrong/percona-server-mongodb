@@ -280,6 +280,7 @@ Status Balancer::moveSingleChunk(OperationContext* opCtx,
                                  uint64_t maxChunkSizeBytes,
                                  const MigrationSecondaryThrottleOptions& secondaryThrottle,
                                  bool waitForDelete) {
+    //检查当前的shard是否能被允许迁移
     auto moveAllowedStatus = _chunkSelectionPolicy->checkMoveAllowed(opCtx, chunk, newShardId);
     if (!moveAllowedStatus.isOK()) {
         return moveAllowedStatus;
@@ -317,6 +318,8 @@ void Balancer::_mainThread() {
 
     // Take the balancer distributed lock and hold it permanently. Do the attempts with single
     // attempts in order to not block the thread and be able to check for interrupt more frequently.
+
+    //获得config的balance的锁
     while (!_stopRequested()) {
         auto status = _migrationManager.tryTakeBalancerLock(opCtx.get(), "CSRS Balancer");
         if (!status.isOK()) {
@@ -560,6 +563,7 @@ Status Balancer::_enforceTagRanges(OperationContext* opCtx) {
             return routingInfoStatus.getStatus();
         }
 
+        //chunk manager
         auto cm = routingInfoStatus.getValue().cm();
 
         auto splitStatus =

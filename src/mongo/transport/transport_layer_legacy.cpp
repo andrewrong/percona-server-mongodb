@@ -61,6 +61,7 @@ struct lock_weak {
 TransportLayerLegacy::ListenerLegacy::ListenerLegacy(const TransportLayerLegacy::Options& opts,
                                                      NewConnectionCb callback)
     : Listener("", opts.ipList, opts.port, getGlobalServiceContext(), true),
+        
       _accepted(std::move(callback)) {}
 
 void TransportLayerLegacy::ListenerLegacy::accepted(std::unique_ptr<AbstractMessagingPort> mp) {

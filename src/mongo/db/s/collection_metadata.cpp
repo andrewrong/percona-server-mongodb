@@ -205,6 +205,7 @@ bool CollectionMetadata::getDifferentChunk(const BSONObj& chunkMinKey,
     RangeMap::const_iterator lowerChunkIt = _chunksMap.begin();
 
     while (lowerChunkIt != upperChunkIt) {
+        //从最小的开始找到第一个不等于迁移的chunk，然后修改这个的版本
         if (lowerChunkIt->first.woCompare(chunkMinKey) != 0) {
             differentChunk->setMin(lowerChunkIt->first);
             differentChunk->setMax(lowerChunkIt->second.getMaxKey());

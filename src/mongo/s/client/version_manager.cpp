@@ -223,11 +223,13 @@ bool initShardVersionEmptyNS(OperationContext* opCtx, DBClientBase* conn_in) {
 }
 
 /**
+ * 更新远程shard的缓存版本；版本的方式为configservice地址 + shardName + shardversion
  * Updates the remote cached version on the remote shard host (primary, in the case of replica
  * sets) if needed with a fully-qualified shard version for the given namespace:
  *   config server(s) + shard name + shard version
  *
  * If no remote cached version has ever been set, an initial shard version is sent.
+ * 如果远程没有版本几句进行初始化
  *
  * If the namespace is empty and no version has ever been sent, the config server + shard name
  * is sent to the remote shard host to initialize the connection as coming from mongos.
@@ -273,6 +275,7 @@ bool checkShardVersion(OperationContext* opCtx,
     const auto manager = routingInfo.cm();
     const auto primary = routingInfo.primary();
 
+    //序列号，每次更新都会自增
     unsigned long long officialSequenceNumber = 0;
 
     if (manager) {
@@ -293,6 +296,7 @@ bool checkShardVersion(OperationContext* opCtx,
 
     // Check this manager against the reference manager
     if (manager) {
+        //与之前的版本不兼容;
         if (refManager && !refManager->compatibleWith(*manager, shard->getId())) {
             const ChunkVersion refVersion(refManager->getVersion(shard->getId()));
             const ChunkVersion currentVersion(manager->getVersion(shard->getId()));
@@ -334,12 +338,14 @@ bool checkShardVersion(OperationContext* opCtx,
     unsigned long long sequenceNumber = 0;
     if (connectionShardStatus.getSequence(conn, ns, &sequenceNumber)) {
         if (sequenceNumber == officialSequenceNumber) {
+            //编号没有变化，就不需要更新
             return false;
         }
     }
 
     ChunkVersion version = ChunkVersion(0, 0, OID());
     if (manager) {
+        //获得某一个shard的最大版本
         version = manager->getVersion(shard->getId());
     }
 
@@ -375,6 +381,7 @@ bool checkShardVersion(OperationContext* opCtx,
     if (!authoritative) {
         // use the original connection and get a fresh versionable connection
         // since conn can be invalidated (or worse, freed) after the failure
+        // 使用原始的链接，并且获得最新版本的链接，由于当前链接可能是无效的；
         checkShardVersion(opCtx, conn_in, ns, refManager, 1, tryNumber + 1);
         return true;
     }

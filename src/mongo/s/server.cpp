@@ -256,6 +256,9 @@ static ExitCode runMongosServer() {
     globalConnPool.addHook(new ShardingConnectionHookForMongos(false));
     shardConnectionPool.addHook(new ShardingConnectionHookForMongos(true));
 
+    /**
+     * 我估计是当对应副本集的主备切换的时候执行的hook
+     */
     ReplicaSetMonitor::setAsynchronousConfigChangeHook(
         &ShardRegistry::replicaSetChangeConfigServerUpdateHook);
     ReplicaSetMonitor::setSynchronousConfigChangeHook(
@@ -283,6 +286,7 @@ static ExitCode runMongosServer() {
             return EXIT_SHARDING_ERROR;
         }
 
+        //什么鬼，为什么mongos需要关心balance的策略
         Grid::get(opCtx.get())->getBalancerConfiguration()->refreshAndCheck(opCtx.get());
     }
 
@@ -373,17 +377,22 @@ static int _main() {
 
     startSignalProcessingThread();
 
+    /*
+     * 兼容不同操作系统，目前能更加快速获得递增的时间
+     */
     getGlobalServiceContext()->setFastClockSource(FastClockSourceFactory::create(Milliseconds{10}));
 
     auto shardingContext = Grid::get(getGlobalServiceContext());
 
     // we either have a setting where all processes are in localhost or none are
+    //获得configservice的信息 
     std::vector<HostAndPort> configServers = mongosGlobalParams.configdbs.getServers();
     for (std::vector<HostAndPort>::const_iterator it = configServers.begin();
          it != configServers.end();
          ++it) {
         const HostAndPort& configAddr = *it;
-
+        
+        //通常任务副本集第一个是primary，所以需要思考当前的机器是不是与configservice是同一个机器
         if (it == configServers.begin()) {
             shardingContext->setAllowLocalHost(configAddr.isLocalHost());
         }
@@ -445,8 +454,10 @@ int mongoSMain(int argc, char* argv[], char** envp) {
     if (argc < 1)
         return EXIT_FAILURE;
 
+    //注册关闭清理任务
     registerShutdownTask(cleanupTask);
 
+    // 设置信号处理程序
     setupSignalHandlers();
 
     Status status = mongo::runGlobalInitializers(argc, argv, envp);

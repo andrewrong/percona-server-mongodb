@@ -79,6 +79,9 @@ enum ShardDrainingStatus {
 
 /**
  * Abstracts reads of the sharding catalog metadata.
+ * 对于分片元数据的read的抽象
+ * 
+ * 任何实现接口都已经直接读原始的持久化数据，应该避免自己做cache; cache需要在更加高层的代码来做
  *
  * All implementations of this interface should go directly to the persistent backing store
  * and should avoid doing any caching of their own. The caching is delegated to a parallel

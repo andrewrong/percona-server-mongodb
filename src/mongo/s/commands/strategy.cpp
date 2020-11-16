@@ -119,6 +119,7 @@ void Strategy::queryOp(OperationContext* opCtx, const NamespaceString& nss, DbMe
     LOG(3) << "query: " << q.ns << " " << redact(q.query) << " ntoreturn: " << q.ntoreturn
            << " options: " << q.queryOptions;
 
+    //是否是迭代模式进行访问
     if (q.queryOptions & QueryOption_Exhaust) {
         uasserted(18526,
                   str::stream() << "The 'exhaust' query option is invalid for mongos queries: "
@@ -142,13 +143,15 @@ void Strategy::queryOp(OperationContext* opCtx, const NamespaceString& nss, DbMe
 
         return uassertStatusOK(ReadPreferenceSetting::fromBSON(rpElem.Obj()));
     }();
-
+    
+    //类似于sql解析
     auto canonicalQuery =
         uassertStatusOK(CanonicalQuery::canonicalize(opCtx, q, ExtensionsCallbackNoop()));
 
     // If the $explain flag was set, we must run the operation on the shards as an explain command
     // rather than a find command.
     const QueryRequest& queryRequest = canonicalQuery->getQueryRequest();
+    //是否要返回解析过程
     if (queryRequest.isExplain()) {
         const BSONObj findCommand = queryRequest.asFindCommand();
 
@@ -176,6 +179,7 @@ void Strategy::queryOp(OperationContext* opCtx, const NamespaceString& nss, DbMe
 
     // Do the work to generate the first batch of results. This blocks waiting to get responses from
     // the shard(s).
+    // 用来存放多个分片的数据
     std::vector<BSONObj> batch;
 
     // 0 means the cursor is exhausted. Otherwise we assume that a cursor with the returned id can
@@ -352,7 +356,7 @@ void Strategy::commandOp(OperationContext* opCtx,
                          const BSONObj& targetingCollation,
                          std::vector<CommandResult>* results) {
     QuerySpec qSpec(db + ".$cmd", command, BSONObj(), 0, 1, options);
-
+    log() << "db:" << db << ", command:" << command.toString() << ",option:" << options << ", versionNs:" << versionedNS << ",targetQuery:" << targetingQuery.toString() << ",collection:" << targetingCollation.toString();
     ParallelSortClusteredCursor cursor(
         qSpec, CommandInfo(versionedNS, targetingQuery, targetingCollation));
 

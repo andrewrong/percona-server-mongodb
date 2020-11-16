@@ -233,6 +233,7 @@ Status MigrationChunkClonerSourceLegacy::awaitUntilCriticalSectionIsAppropriate(
 
     int iteration = 0;
     while ((Date_t::now() - startTime) < maxTimeToWait) {
+        //发送请求
         auto responseStatus = _callRecipient(
             createRequestWithSessionId(kRecvChunkStatus, _args.getNss(), _sessionId, true));
         if (!responseStatus.isOK()) {
@@ -518,6 +519,7 @@ StatusWith<BSONObj> MigrationChunkClonerSourceLegacy::_callRecipient(const BSONO
 }
 
 Status MigrationChunkClonerSourceLegacy::_storeCurrentLocs(OperationContext* txn) {
+    // db和coll都是意向读锁
     ScopedTransaction scopedXact(txn, MODE_IS);
     AutoGetCollection autoColl(txn, _args.getNss(), MODE_IS);
 
@@ -583,6 +585,7 @@ Status MigrationChunkClonerSourceLegacy::_storeCurrentLocs(OperationContext* txn
     if (totalRecs > 0) {
         avgRecSize = collection->dataSize(txn) / totalRecs;
         maxRecsWhenFull = _args.getMaxChunkSizeBytes() / avgRecSize;
+        //1.3倍的指定大小
         maxRecsWhenFull = 130 * maxRecsWhenFull / 100;  // pad some slack
     } else {
         avgRecSize = 0;

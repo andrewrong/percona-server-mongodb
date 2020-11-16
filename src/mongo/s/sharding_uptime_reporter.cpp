@@ -49,6 +49,7 @@
 namespace mongo {
 namespace {
 
+//10s更新
 const Seconds kUptimeReportInterval(10);
 
 std::string constructInstanceIdString(const std::string& hostName) {

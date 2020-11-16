@@ -48,6 +48,8 @@ class StatusWith;
 /**
  * Thread-safe object, which keeps track of the active migrations running on a node and limits them
  * to only one per-shard. There is only one instance of this object per shard.
+ * 
+ * /
  */
 class ActiveMigrationsRegistry {
     MONGO_DISALLOW_COPYING(ActiveMigrationsRegistry);

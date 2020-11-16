@@ -49,6 +49,8 @@ class StatusWith;
 /**
  * ClusterCursorManager is a container for ClusterClientCursor objects.  It manages the lifetime of
  * its registered cursors and tracks basic information about them.
+ * 
+ * CLusterCurorManager是ClusterClientCursor的容器。用来管理被注册的游标的生命周期和跟踪一些基本的信息
  *
  * Each registered cursor is either in a 'pinned' or an 'idle' state.  Registered cursors must be
  * pinned in order to iterate results, and cursors may only be pinned by one client at a time (this

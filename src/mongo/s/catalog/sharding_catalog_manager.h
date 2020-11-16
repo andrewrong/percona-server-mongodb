@@ -54,6 +54,8 @@ struct ConnectionPoolStats;
 
 /**
  * Abstracts writes of the sharding catalog metadata.
+ * 
+ * 分片数据写操作的抽象
  *
  * All implementations of this interface should go directly to the persistent backing store
  * and should avoid doing any caching of their own. The caching is delegated to a parallel

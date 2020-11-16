@@ -545,7 +545,7 @@ void assembleResponse(OperationContext* txn,
     // before we lock...
     NetworkOp op = m.operation();
     bool isCommand = false;
-
+    
     DbMessage dbmsg(m);
 
     Client& c = *txn->getClient();

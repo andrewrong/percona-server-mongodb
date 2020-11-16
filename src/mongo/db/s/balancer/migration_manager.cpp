@@ -243,6 +243,7 @@ Status MigrationManager::executeManualMigration(
         return statusWithScopedMigrationRequest.getStatus();
     }
 
+    //movechunk不需要分布式锁
     RemoteCommandResponse remoteCommandResponse =
         _schedule(opCtx, migrateInfo, false, maxChunkSizeBytes, secondaryThrottle, waitForDelete)
             ->get();
@@ -597,7 +598,7 @@ shared_ptr<Notification<RemoteCommandResponse>> MigrationManager::_schedule(
 
     return retVal;
 }
-
+// 如果没有用分布式锁，那就本地lock
 void MigrationManager::_scheduleWithDistLock_inlock(OperationContext* opCtx,
                                                     const HostAndPort& targetHost,
                                                     Migration migration) {
@@ -630,6 +631,7 @@ void MigrationManager::_scheduleWithDistLock_inlock(OperationContext* opCtx,
     const RemoteCommandRequest remoteRequest(
         targetHost, NamespaceString::kAdminDb.toString(), itMigration->moveChunkCmdObj, opCtx);
 
+    // 估计是同步的调用
     StatusWith<executor::TaskExecutor::CallbackHandle> callbackHandleWithStatus =
         executor->scheduleRemoteCommand(
             remoteRequest,
@@ -648,6 +650,7 @@ void MigrationManager::_scheduleWithDistLock_inlock(OperationContext* opCtx,
         return;
     }
 
+    //如果本次movechunk失败的话，需要清理分布lock，如果成功就不清理，这不知道是为什么
     _completeWithDistLock_inlock(
         opCtx, itMigration, std::move(callbackHandleWithStatus.getStatus()));
 }

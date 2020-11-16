@@ -70,7 +70,7 @@ const Milliseconds kLockRetryInterval(500);
 
 const Seconds ReplSetDistLockManager::kDistLockPingInterval{30};
 const Minutes ReplSetDistLockManager::kDistLockExpirationTime{15};
-
+// 在configservice起来的时候会初始化这个东西
 ReplSetDistLockManager::ReplSetDistLockManager(ServiceContext* globalContext,
                                                StringData processID,
                                                unique_ptr<DistLockCatalog> catalog,
@@ -86,6 +86,7 @@ ReplSetDistLockManager::~ReplSetDistLockManager() = default;
 
 void ReplSetDistLockManager::startUp() {
     if (!_execThread) {
+        //启动一个线程来运行一个任务;
         _execThread = stdx::make_unique<stdx::thread>(&ReplSetDistLockManager::doTask, this);
     }
 }
@@ -104,6 +105,7 @@ void ReplSetDistLockManager::shutDown(OperationContext* txn) {
         _execThread.reset();
     }
 
+    // 删除这个进程的lockpings中记录
     auto status = _catalog->stopPing(txn, _processID);
     if (!status.isOK()) {
         warning() << "error encountered while cleaning up distributed ping entry for " << _processID
@@ -127,6 +129,8 @@ void ReplSetDistLockManager::doTask() {
     Timer elapsedSincelastPing(_serviceContext->getTickSource());
     Client::initThread("replSetDistLockPinger");
 
+    //每一个启动的组件都会有这么一个实例，定时的将自己的信息放到configservice中的lockpings,这样分布锁过期机制就可以通过这个机制来保证
+    // 但是configservice只会启动一个;
     while (!isShutDown()) {
         {
             auto txn = cc().makeOperationContext();
@@ -155,6 +159,7 @@ void ReplSetDistLockManager::doTask() {
                                     "status unlock not initialized!");
                 if (toUnlock.second) {
                     // A non-empty _id (name) field was provided, unlock by ts (sessionId) and _id.
+                    // 将需要unlock的全部解锁掉;
                     unlockStatus = _catalog->unlock(txn.get(), toUnlock.first, *toUnlock.second);
                     nameMessage = " and " + LocksType::name() + ": " + *toUnlock.second;
                 } else {
@@ -178,6 +183,7 @@ void ReplSetDistLockManager::doTask() {
 
         stdx::unique_lock<stdx::mutex> lk(_mutex);
         MONGO_IDLE_THREAD_BLOCK;
+        //等待一个时间段，可能这个被关闭
         _shutDownCV.wait_for(lk, _pingInterval.toSystemDuration(), [this] { return _isShutDown; });
     }
 }

@@ -80,9 +80,9 @@ public:
     };
 
     enum class RetryPolicy {
-        kIdempotent,
-        kNotIdempotent,
-        kNoRetry,
+        kIdempotent, //幂等
+        kNotIdempotent, //不幂等
+        kNoRetry, // 不重试
     };
 
     virtual ~Shard() = default;

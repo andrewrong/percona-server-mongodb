@@ -51,6 +51,7 @@ class Database;
 class PlanExecutor;
 class RecordId;
 
+//真实执行迁移工作的内部实现
 class MigrationChunkClonerSourceLegacy final : public MigrationChunkClonerSource {
     MONGO_DISALLOW_COPYING(MigrationChunkClonerSourceLegacy);
 
@@ -143,7 +144,7 @@ private:
     /**
      * Get the disklocs that belong to the chunk migrated and sort them in _cloneLocs (to avoid
      * seeking disk later).
-     *
+     * 获得在磁盘上的位置,然后进行排序，防止后面进行再次对磁盘索引
      * Returns OK or any error status otherwise.
      */
     Status _storeCurrentLocs(OperationContext* txn);
@@ -190,6 +191,7 @@ private:
     State _state{kNew};
 
     // List of record ids that needs to be transferred (initial clone)
+    // 需要传输的记录id
     std::set<RecordId> _cloneLocs;
 
     // The estimated average object size during the clone phase. Used for buffer size

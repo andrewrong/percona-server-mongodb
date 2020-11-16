@@ -105,6 +105,7 @@ MigrationSourceManager::MigrationSourceManager(OperationContext* txn,
           << " with expected collection version " << expectedCollectionVersion;
 
     // Now that the collection is locked, snapshot the metadata and fetch the latest versions
+    // 这个时候coll是被locked, 
     ShardingState* const shardingState = ShardingState::get(txn);
 
     ChunkVersion shardVersion;
@@ -117,6 +118,7 @@ MigrationSourceManager::MigrationSourceManager(OperationContext* txn,
                                 << refreshStatus.toString());
     }
 
+    //表示当前的shard就根本没有chunk，那怎么可能需要迁移的呢
     if (shardVersion.majorVersion() == 0) {
         // If the major version is zero, this means we do not have any chunks locally to migrate in
         // the first place
@@ -127,9 +129,13 @@ MigrationSourceManager::MigrationSourceManager(OperationContext* txn,
 
     // Snapshot the committed metadata from the time the migration starts
     {
+        //这两个锁完全看不懂是为了什么?
+        // MODE_IS: 意向读锁
         ScopedTransaction scopedXact(txn, MODE_IS);
+        // coll加上意向读锁
         AutoGetCollection autoColl(txn, getNss(), MODE_IS);
 
+        //这样这个时候获得collection的元信息就不会变化，获得最新的
         _collectionMetadata = CollectionShardingState::get(txn, getNss())->getMetadata();
         _keyPattern = _collectionMetadata->getKeyPattern();
     }
@@ -173,9 +179,12 @@ NamespaceString MigrationSourceManager::getNss() const {
 Status MigrationSourceManager::startClone(OperationContext* txn) {
     invariant(!txn->lockState()->isLocked());
     invariant(_state == kCreated);
+
+    //假如执行失败就进行清理
     auto scopedGuard = MakeGuard([&] { cleanupOnError(txn); });
     _stats.countDonorMoveChunkStarted.addAndFetch(1);
 
+    //记录日志到changelog中去
     grid.catalogClient(txn)->logChange(txn,
                                        "moveChunk.start",
                                        getNss().ns(),
@@ -193,6 +202,7 @@ Status MigrationSourceManager::startClone(OperationContext* txn) {
 
     {
         // Register for notifications from the replication subsystem
+        // coll获得
         ScopedTransaction scopedXact(txn, MODE_IX);
         AutoGetCollection autoColl(txn, getNss(), MODE_IX, MODE_X);
 
@@ -210,6 +220,7 @@ Status MigrationSourceManager::startClone(OperationContext* txn) {
     return Status::OK();
 }
 
+//等待dest能追上source，这是一个等待的过程； clone是copy静态文件，而catchup是从指定的oplog进行追随
 Status MigrationSourceManager::awaitToCatchUp(OperationContext* txn) {
     invariant(!txn->lockState()->isLocked());
     invariant(_state == kCloning);
@@ -218,6 +229,7 @@ Status MigrationSourceManager::awaitToCatchUp(OperationContext* txn) {
     _cloneAndCommitTimer.reset();
 
     // Block until the cloner deems it appropriate to enter the critical section.
+    // 这边source会不断的等待着dest达到steady的状态
     Status catchUpStatus = _cloneDriver->awaitUntilCriticalSectionIsAppropriate(
         txn, kMaxWaitToEnterCriticalSectionTimeout);
     if (!catchUpStatus.isOK()) {
@@ -229,6 +241,7 @@ Status MigrationSourceManager::awaitToCatchUp(OperationContext* txn) {
     return Status::OK();
 }
 
+//进入关键区域
 Status MigrationSourceManager::enterCriticalSection(OperationContext* txn) {
     invariant(!txn->lockState()->isLocked());
     invariant(_state == kCloneCaughtUp);
@@ -237,6 +250,7 @@ Status MigrationSourceManager::enterCriticalSection(OperationContext* txn) {
     _cloneAndCommitTimer.reset();
 
     // Mark the shard as running critical operation, which requires recovery on crash
+    // 记录一个元数据操作的，主要是异常恢复使用
     Status status = ShardingStateRecovery::startMetadataOp(txn);
     if (!status.isOK()) {
         return status;
@@ -246,6 +260,7 @@ Status MigrationSourceManager::enterCriticalSection(OperationContext* txn) {
         // The critical section must be entered with collection X lock in order to ensure there are
         // no writes which could have entered and passed the version check just before we entered
         // the crticial section, but managed to complete after we left it.
+        // 这个时候coll会被排他锁lock住，这个时候就没有任何的写可以操作了
         ScopedTransaction scopedXact(txn, MODE_IX);
         AutoGetCollection autoColl(txn, getNss(), MODE_IX, MODE_X);
 
@@ -265,6 +280,7 @@ Status MigrationSourceManager::enterCriticalSection(OperationContext* txn) {
         }
 
         // IMPORTANT: After this line, the critical section is in place and needs to be signaled
+        // 被标示已经进入了临界区
         _critSecSignal = std::make_shared<Notification<void>>();
     }
 

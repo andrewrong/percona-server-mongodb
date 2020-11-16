@@ -52,8 +52,10 @@ public:
 
     virtual ~DistLockCatalogImpl();
 
+    //获得指定process的lockpings
     virtual StatusWith<LockpingsType> getPing(OperationContext* txn, StringData processID) override;
 
+    //将ping写入到远程的configservice
     virtual Status ping(OperationContext* txn, StringData processID, Date_t ping) override;
 
     virtual StatusWith<LocksType> grabLock(OperationContext* txn,
