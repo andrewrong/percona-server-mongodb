@@ -68,6 +68,11 @@ void TransportLayerLegacy::ListenerLegacy::accepted(std::unique_ptr<AbstractMess
     _accepted(std::move(mp));
 }
 
+/**
+ * 初始化这层做的事情
+ * 1. 设置了消息处理的后端存储
+ * 2. 初始化了listener，并且指定了新建链接的处理函数
+ */
 TransportLayerLegacy::TransportLayerLegacy(const TransportLayerLegacy::Options& opts,
                                            ServiceEntryPoint* sep)
     : _sep(sep),
@@ -77,6 +82,7 @@ TransportLayerLegacy::TransportLayerLegacy(const TransportLayerLegacy::Options& 
       _running(false),
       _options(opts) {}
 
+// 创建一个session
 std::shared_ptr<TransportLayerLegacy::LegacySession> TransportLayerLegacy::LegacySession::create(
     std::unique_ptr<AbstractMessagingPort> amp, TransportLayerLegacy* tl) {
     std::shared_ptr<LegacySession> handle(new LegacySession(std::move(amp), tl));
@@ -141,6 +147,7 @@ Status TransportLayerLegacy::start() {
 
 TransportLayerLegacy::~TransportLayerLegacy() = default;
 
+// sourceMessage表示对接受消息的处理
 Ticket TransportLayerLegacy::sourceMessage(const SessionHandle& session,
                                            Message* message,
                                            Date_t expiration) {
@@ -356,6 +363,7 @@ void TransportLayerLegacy::_handleNewConnection(std::unique_ptr<AbstractMessagin
     }
 
     invariant(_sep);
+    //真正的逻辑
     _sep->startSession(std::move(session));
 }
 
