@@ -53,6 +53,7 @@
 #include "mongo/util/exit_code.h"
 #include "mongo/util/hex.h"
 #include "mongo/util/timer.h"
+#include "mongo/util/scopeguard.h"
 
 
 namespace mongo {
@@ -243,6 +244,10 @@ void WatchdogMonitorThread::resetState() {
 void WatchdogMonitorThread::run(OperationContext* opCtx) {
     auto currentGeneration = _checkThread->getGeneration();
 
+    Date_t now = opCtx->getServiceContext()->getPreciseClockSource()->now();
+    std::string nowStr = now.toString();
+
+    error() << "now:" << nowStr <<  ",currentGeneration:" << currentGeneration << "last:" << _lastSeenGeneration; 
     if (currentGeneration != _lastSeenGeneration) {
         _lastSeenGeneration = currentGeneration;
     } else {
@@ -452,6 +457,16 @@ constexpr StringData DirectoryCheck::kProbeFileName;
 constexpr StringData DirectoryCheck::kProbeFileNameExt;
 
 void DirectoryCheck::run(OperationContext* opCtx) {
+    Date_t now = opCtx->getServiceContext()->getPreciseClockSource()->now();
+    std::string nowStr = now.toString();
+
+    error() << "DirectoryCheck::start::time:" << nowStr;
+    ON_BLOCK_EXIT([opCtx] {
+        Date_t now = opCtx->getServiceContext()->getPreciseClockSource()->now();
+        std::string nowStr = now.toString();
+        error() << "DirectoryCheck::end::time:" << nowStr;
+    });
+
     // Ensure we have unique file names if multiple processes share the same logging directory
     boost::filesystem::path file = _directory;
     file /= kProbeFileName.toString();
