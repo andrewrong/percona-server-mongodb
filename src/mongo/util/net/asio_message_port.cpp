@@ -110,6 +110,7 @@ ASIOMessagingPort::ASIOMessagingPort(int fd, SockAddr farEnd)
 #endif  // MONGO_CONFIG_SSL
     _getSocket().non_blocking(true);
     _remote = HostAndPort(farEnd.getAddr(), farEnd.getPort());
+    //定时器设置到最大时间国旗
     _timer.expires_at(decltype(_timer)::time_point::max());
     _setTimerCallback();
 }
@@ -197,11 +198,13 @@ asio::error_code ASIOMessagingPort::_read(char* buf, std::size_t size) {
     }
 
     // Fall back to async with timer if the operation would block.
+    // 1.设置超时，防止读请求太久
     if (_timeout) {
         _timer.expires_from_now(decltype(_timer)::duration(
             durationCount<Duration<decltype(_timer)::duration::period>>(*_timeout)));
     }
     if (!_isEncrypted) {
+        //异步读消息
         asio::async_read(
             _getSocket(),
             asio::buffer(buf + bytesRead, size - bytesRead),
@@ -222,6 +225,7 @@ asio::error_code ASIOMessagingPort::_read(char* buf, std::size_t size) {
     }
 #endif  // MONGO_CONFIG_SSL
     do {
+        // 非阻塞操作，这个时候这个线程是被占用的，这边的异步借口感觉不咋好;
         _service.run_one();
     } while (ec == asio::error::would_block);
 

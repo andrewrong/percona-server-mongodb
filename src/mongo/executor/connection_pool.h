@@ -102,6 +102,7 @@ public:
 
         /**
          * Amount of time to wait before timing out a refresh attempt
+         * 一次refresh的超时时间
          */
         Milliseconds refreshTimeout = kDefaultRefreshTimeout;
 
@@ -110,11 +111,13 @@ public:
          * for a user request and must instead be checked out and refreshed
          * before handing to a user.
          */
+        // 默认20秒
         Milliseconds refreshRequirement = kDefaultRefreshRequirement;
 
         /**
          * Amount of time to keep a specific pool around without any checked
          * out connections or new requests
+         * 空闲模式下面的能存在的时间
          */
         Milliseconds hostTimeout = kDefaultHostTimeout;
     };

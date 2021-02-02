@@ -75,6 +75,7 @@ shared_ptr<ReplicaSetMonitor> ReplicaSetMonitorManager::getMonitor(StringData se
     }
 }
 
+// 副本之间的管理用的是executor，单线程的
 void ReplicaSetMonitorManager::_setupTaskExecutorInLock(const std::string& name) {
     // do not restart taskExecutor if is in shutdown
     if (!_taskExecutor && !_isShutdown) {

@@ -46,6 +46,7 @@ class TransportLayer;
  * A Ticket represents some work to be done within the TransportLayer.
  * Run Tickets by passing them in a call to either TransportLayer::wait()
  * or TransportLayer::asyncWait().
+ * Ticket表示需要去完成一些工作的对象
  */
 class Ticket {
     MONGO_DISALLOW_COPYING(Ticket);
@@ -96,6 +97,7 @@ public:
      * Wait for this ticket to be filled.
      *
      * This is this-rvalue qualified because it consumes the ticket
+     * 这个函数只能被右值的对象调用
      */
     Status wait() &&;
 
@@ -103,6 +105,7 @@ public:
      * Asynchronously wait for this ticket to be filled.
      *
      * This is this-rvalue qualified because it consumes the ticket
+     * 这个函数只能被右值的对象调用
      */
     void asyncWait(TicketCallback cb) &&;
 

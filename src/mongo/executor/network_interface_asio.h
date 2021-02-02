@@ -110,7 +110,7 @@ public:
         std::unique_ptr<rpc::EgressMetadataHook> metadataHook;
     };
 
-    NetworkInterfaceASIO(Options = Options());
+    NetworkInterfceASIO(Options = Options());
 
     std::string getDiagnosticString() override;
 

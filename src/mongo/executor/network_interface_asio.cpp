@@ -308,7 +308,7 @@ Status NetworkInterfaceASIO::startCommand(const TaskExecutor::CallbackHandle& cb
         auto conn = static_cast<connection_pool_asio::ASIOConnection*>(swConn.getValue().get());
 
         AsyncOp* op = nullptr;
-
+        //一次只能操作一个命令进行提交; 理论上触发这个startCommand可能是多个
         stdx::unique_lock<stdx::mutex> lk(_inProgressMutex);
 
         const auto eraseCount = _inGetConnection.erase(cbHandle);
@@ -330,6 +330,7 @@ Status NetworkInterfaceASIO::startCommand(const TaskExecutor::CallbackHandle& cb
         }
 
         // We can't release the AsyncOp until we know we were not canceled.
+        // 连接对应的op, 每一个conn都会有自己的异步op操作
         auto ownedOp = conn->releaseAsyncOp();
         op = ownedOp.get();
 
@@ -338,6 +339,7 @@ Status NetworkInterfaceASIO::startCommand(const TaskExecutor::CallbackHandle& cb
         // reset, so we do that here.
         MONGO_ASIO_INVARIANT_INLOCK(!op->canceled(), "AsyncOp has dirty canceled flag", op);
         MONGO_ASIO_INVARIANT_INLOCK(!op->timedOut(), "AsyncOp has dirty timeout flag", op);
+        // 清理状态
         op->clearStateTransitions();
 
         // Now that we're inProgress, an external cancel can touch our op, but

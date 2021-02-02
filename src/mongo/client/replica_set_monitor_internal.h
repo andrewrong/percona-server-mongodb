@@ -224,9 +224,13 @@ public:
     // Access to fields is guarded by associated SetState's mutex.
     bool foundUpMaster;
     bool foundAnyUpNodes;
+    // 可以工作的节点
     std::deque<HostAndPort> hostsToScan;  // Work queue.
+    // 非master上报的节点
     std::set<HostAndPort> possibleNodes;  // Nodes reported by non-primary hosts.
+    //发送请求但是没返回的节点
     std::set<HostAndPort> waitingFor;     // Hosts we have dispatched but haven't replied yet.
+    // 已经从getNextStep返回的节点；
     std::set<HostAndPort> triedHosts;     // Hosts that have been returned from getNextStep.
 
     // All responses go here until we find a master.

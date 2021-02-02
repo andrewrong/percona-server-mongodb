@@ -75,11 +75,13 @@ public:
     struct Stats {
         /**
          * Returns the number of sessions currently open in the transport layer.
+         * 返回当前正open的session个数
          */
         size_t numOpenSessions = 0;
 
         /**
          * Returns the total number of sessions that have ever been created by this TransportLayer.
+         * 返回自程序启动到现在被创建的session的个数,这个一个累计数
          */
         size_t numCreatedSessions = 0;
 
@@ -88,6 +90,7 @@ public:
          * when we are operating under a transport::Session limit (for example, in the
          * legacy implementation, we respect a maximum number of connections). If there
          * is no session limit, returns std::numeric_limits<int>::max().
+         * 能被创建的session的个数
          */
         size_t numAvailableSessions = 0;
     };
@@ -166,6 +169,7 @@ public:
 
     /**
      * Returns the number of sessions currently open in the transport layer.
+     * 当前传输层的session的状态
      */
     virtual Stats sessionStats() = 0;
 
@@ -177,7 +181,7 @@ public:
      * be closed.
      *
      * ~Session() will automatically call end() with itself.
-     *
+     * session结束，会让wait或者asyncwait得到一个结果，这个结果是会将这个错误状态保存起来 
      * This method is idempotent and synchronous.
      */
     virtual void end(const SessionHandle& session) = 0;

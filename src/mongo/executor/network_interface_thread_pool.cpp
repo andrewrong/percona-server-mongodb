@@ -128,6 +128,7 @@ void NetworkInterfaceThreadPool::consumeTasks(stdx::unique_lock<stdx::mutex> lk)
     if (_consumingTasks || _tasks.empty())
         return;
 
+    // 没有被关闭并且不是在网络线程上
     if (!(_inShutdown || _net->onNetworkThread())) {
         if (!_registeredAlarm) {
             _registeredAlarm = true;

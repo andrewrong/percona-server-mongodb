@@ -65,6 +65,7 @@ TransportLayerLegacy::ListenerLegacy::ListenerLegacy(const TransportLayerLegacy:
       _accepted(std::move(callback)) {}
 
 void TransportLayerLegacy::ListenerLegacy::accepted(std::unique_ptr<AbstractMessagingPort> mp) {
+    //接受一个消息，然后通过回调函数进行处理
     _accepted(std::move(mp));
 }
 
@@ -72,6 +73,7 @@ void TransportLayerLegacy::ListenerLegacy::accepted(std::unique_ptr<AbstractMess
  * 初始化这层做的事情
  * 1. 设置了消息处理的后端存储
  * 2. 初始化了listener，并且指定了新建链接的处理函数
+ * 3. _sep这个传输层的主要负责的业务逻辑
  */
 TransportLayerLegacy::TransportLayerLegacy(const TransportLayerLegacy::Options& opts,
                                            ServiceEntryPoint* sep)
@@ -82,13 +84,20 @@ TransportLayerLegacy::TransportLayerLegacy(const TransportLayerLegacy::Options& 
       _running(false),
       _options(opts) {}
 
-// 创建一个session
+/**
+ * 创建一个session，每一个session会包含负责的远程服务的端口和对应的传输层信息
+ */
 std::shared_ptr<TransportLayerLegacy::LegacySession> TransportLayerLegacy::LegacySession::create(
     std::unique_ptr<AbstractMessagingPort> amp, TransportLayerLegacy* tl) {
     std::shared_ptr<LegacySession> handle(new LegacySession(std::move(amp), tl));
     return handle;
 }
 
+/**
+ * session会包含的信息：对应的远端地址和本地地址，客户端和服务端之间的socket，这个socket通过connection来进行维护
+ * 
+ * 
+ */
 TransportLayerLegacy::LegacySession::LegacySession(std::unique_ptr<AbstractMessagingPort> amp,
                                                    TransportLayerLegacy* tl)
     : Session(amp->connectionId()),
@@ -126,6 +135,7 @@ Status TransportLayerLegacy::LegacyTicket::fill(AbstractMessagingPort* amp) {
     return _fill(amp);
 }
 
+//设置listen能接受的连接个数
 Status TransportLayerLegacy::setup() {
     if (!_listener->setupSockets()) {
         error() << "Failed to set up sockets during startup.";
@@ -139,7 +149,7 @@ Status TransportLayerLegacy::start() {
     if (_running.swap(true)) {
         return {ErrorCodes::InternalError, "TransportLayer is already running"};
     }
-
+    //启动线程select各个listen的端口,如果有新的连接就调用传输层的newHandler这回调函数
     _listenerThread = stdx::thread([this]() { _listener->initAndListen(); });
 
     return Status::OK();

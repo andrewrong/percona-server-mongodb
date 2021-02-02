@@ -351,6 +351,9 @@ size_t ConnectionPool::SpecificPool::openConnections(const stdx::unique_lock<std
     return _checkedOutPool.size() + _readyPool.size() + _processingPool.size();
 }
 
+/**
+ *
+ */
 void ConnectionPool::SpecificPool::getConnection(const HostAndPort& hostAndPort,
                                                  Milliseconds timeout,
                                                  stdx::unique_lock<stdx::mutex> lk,
@@ -359,20 +362,23 @@ void ConnectionPool::SpecificPool::getConnection(const HostAndPort& hostAndPort,
         timeout = _parent->_options.refreshTimeout;
     }
 
+    //获得这个请求的超时时间；
     const auto expiration = _parent->_factory->now() + timeout;
 
+    //请求放入到队列中
     _requests.push(make_pair(expiration, std::move(cb)));
 
     updateStateInLock();
 
+    //生成一个请求; 
     spawnConnections(lk);
+    //去处理请求
     fulfillRequests(lk);
 }
-
+//归还连接，如果连接已经用了很久的就需要删除被重建;
 void ConnectionPool::SpecificPool::returnConnection(ConnectionInterface* connPtr,
                                                     stdx::unique_lock<stdx::mutex> lk) {
     auto needsRefreshTP = connPtr->getLastUsed() + _parent->_options.refreshRequirement;
-
     auto conn = takeFromPool(_checkedOutPool, connPtr);
 
     updateStateInLock();
@@ -499,6 +505,7 @@ void ConnectionPool::SpecificPool::addToReady(stdx::unique_lock<stdx::mutex>& lk
 }
 
 // Drop connections and fail all requests
+// 清除某一个host所有的连接;
 void ConnectionPool::SpecificPool::processFailure(const Status& status,
                                                   stdx::unique_lock<stdx::mutex> lk) {
     // Bump the generation so we don't reuse any pending or checked out
@@ -540,6 +547,7 @@ void ConnectionPool::SpecificPool::processFailure(const Status& status,
 }
 
 // fulfills as many outstanding requests as possible
+// 尽可能的来处理请求
 void ConnectionPool::SpecificPool::fulfillRequests(stdx::unique_lock<stdx::mutex>& lk) {
     // If some other thread (possibly this thread) is fulfilling requests,
     // don't keep padding the callstack.
@@ -551,13 +559,15 @@ void ConnectionPool::SpecificPool::fulfillRequests(stdx::unique_lock<stdx::mutex
 
     while (_requests.size()) {
         auto iter = _readyPool.begin();
-
+        
+        //无可用连接
         if (iter == _readyPool.end())
             break;
 
         // Grab the connection and cancel its timeout
         auto conn = std::move(iter->second);
         _readyPool.erase(iter);
+        //如果当前连接没在用的话，就会定期被刷新
         conn->cancelTimeout();
 
         if (!conn->isHealthy()) {
@@ -587,8 +597,10 @@ void ConnectionPool::SpecificPool::fulfillRequests(stdx::unique_lock<stdx::mutex
         updateStateInLock();
 
         // pass it to the user
+        // 将连接状态pass到用户层
         connPtr->resetToUnknown();
         lk.unlock();
+        // 直接执行这个请求;
         cb(ConnectionHandle(connPtr, ConnectionHandleDeleter(_parent)));
         lk.lock();
     }
@@ -596,6 +608,7 @@ void ConnectionPool::SpecificPool::fulfillRequests(stdx::unique_lock<stdx::mutex
 
 // spawn enough connections to satisfy open requests and minpool, while
 // honoring maxpool
+// 用来产生充足的连接用来使用;
 void ConnectionPool::SpecificPool::spawnConnections(stdx::unique_lock<stdx::mutex>& lk) {
     // If some other thread (possibly this thread) is spawning connections,
     // don't keep padding the callstack.
@@ -611,8 +624,10 @@ void ConnectionPool::SpecificPool::spawnConnections(stdx::unique_lock<stdx::mute
             _parent->_options.minConnections,
             std::min(_requests.size() + _checkedOutPool.size(), _parent->_options.maxConnections));
     };
+    // target 用来表示最大能创建的连接个数
 
     // While all of our inflight connections are less than our target
+    // 如果以后连接小于最大连接数并且正在创建的连接小于可以被限制的连接数，那么就可以创建连接了 
     while ((_readyPool.size() + _processingPool.size() + _checkedOutPool.size() < target()) &&
            (_processingPool.size() < _parent->_options.maxConnecting)) {
         std::unique_ptr<ConnectionPool::ConnectionInterface> handle;
@@ -631,6 +646,7 @@ void ConnectionPool::SpecificPool::spawnConnections(stdx::unique_lock<stdx::mute
 
         // Run the setup callback
         lk.unlock();
+        // 连接创建完之后会设置一个回调函数，如果连接创建成功并且ok的话就把它放到对应的连接池中；难怪这边会存在processingpool了
         connPtr->setup(
             _parent->_options.refreshTimeout, [this](ConnectionInterface* connPtr, Status status) {
                 connPtr->indicateUsed();
@@ -664,6 +680,7 @@ void ConnectionPool::SpecificPool::spawnConnections(stdx::unique_lock<stdx::mute
 }
 
 // Called every second after hostTimeout until all processing connections reap
+// 关闭对应机器的连接池
 void ConnectionPool::SpecificPool::shutdown() {
     stdx::unique_lock<stdx::mutex> lk(_parent->_mutex);
 
@@ -702,6 +719,7 @@ void ConnectionPool::SpecificPool::shutdown() {
     _parent->_pools.erase(_hostAndPort);
 }
 
+//从对应的连接池获得一个连接
 ConnectionPool::SpecificPool::OwnedConnection ConnectionPool::SpecificPool::takeFromPool(
     OwnershipPool& pool, ConnectionInterface* connPtr) {
     auto iter = pool.find(connPtr);
@@ -741,6 +759,7 @@ void ConnectionPool::SpecificPool::updateStateInLock() {
 
         // We set a timer for the most recent request, then invoke each timed
         // out request we couldn't service
+        // 用来更新整体的连接池的状态
         _requestTimer->setTimeout(timeout, [this]() {
             runWithActiveClient([&](stdx::unique_lock<stdx::mutex> lk) {
                 auto now = _parent->_factory->now();
