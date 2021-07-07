@@ -120,6 +120,9 @@ bool ReplSetDistLockManager::isShutDown() {
     return _isShutDown;
 }
 
+// doTask做两件事情:
+// 1. 执行ping操作
+// 2. 将一些有问题的lock进行unlock掉
 void ReplSetDistLockManager::doTask() {
     LOG(0) << "creating distributed lock ping thread for process " << _processID
            << " (sleeping for " << _pingInterval << ")";
@@ -182,10 +185,12 @@ void ReplSetDistLockManager::doTask() {
     }
 }
 
+//判断某一个lock是否过期
 StatusWith<bool> ReplSetDistLockManager::isLockExpired(OperationContext* txn,
                                                        LocksType lockDoc,
                                                        const Milliseconds& lockExpiration) {
     const auto& processID = lockDoc.getProcess();
+    // 获得锁对应的process,并且看到对应锁的状态，这是一个查询，查看这个进程最近的状态;
     auto pingStatus = _catalog->getPing(txn, processID);
 
     Date_t pingValue;
@@ -204,6 +209,7 @@ StatusWith<bool> ReplSetDistLockManager::isLockExpired(OperationContext* txn,
     }  // else use default pingValue if ping document does not exist.
 
     Timer timer(_serviceContext->getTickSource());
+    //本进程执行serverstatus
     auto serverInfoStatus = _catalog->getServerInfo(txn);
     if (!serverInfoStatus.isOK()) {
         if (serverInfoStatus.getStatus() == ErrorCodes::NotMaster) {
@@ -227,6 +233,7 @@ StatusWith<bool> ReplSetDistLockManager::isLockExpired(OperationContext* txn,
         // We haven't seen this lock before so we don't have any point of reference
         // to compare and determine the elapsed time. Save the current ping info
         // for this lock.
+        // 如果查以往的日志的话，发现没有，就把当前的pingvalue与lock进行关联起来
         _pingHistory.emplace(std::piecewise_construct,
                              std::forward_as_tuple(lockDoc.getName()),
                              std::forward_as_tuple(processID,
@@ -260,12 +267,14 @@ StatusWith<bool> ReplSetDistLockManager::isLockExpired(OperationContext* txn,
         return false;
     }
 
+    //如果这次执行的configservice的事件比之前要小，那说明configserver时间回滚了
     if (configServerLocalTime < pingInfo->configLocalTime) {
         warning() << "config server local time went backwards, from last seen: "
                   << pingInfo->configLocalTime << " to " << configServerLocalTime;
         return false;
     }
 
+    //如果这次ping与上次的ping的时间是一样，但是configsvr的时间已经大于了一定的时间，就会被认为当前的锁过期
     Milliseconds elapsedSinceLastPing(configServerLocalTime - pingInfo->configLocalTime);
     if (elapsedSinceLastPing >= lockExpiration) {
         LOG(0) << "forcing lock '" << lockDoc.getName() << "' because elapsed time "
@@ -298,8 +307,12 @@ StatusWith<DistLockHandle> ReplSetDistLockManager::lockWithSessionID(OperationCo
     // the lock is currently taken, we will back off and try the acquisition again, repeating this
     // until the lockTryInterval has been reached. If a network error occurs at each lock
     // acquisition attempt, the lock acquisition will be retried immediately.
+
+    // 分布式锁获得原理是同哦你给过尝试更新某一个状态变成已获取来表示自己获得锁；
+    // 假如这个锁当前已经获得，我们将回到一开始的地方然后重新开始尝试获取；重复进行这个操作直到lockTryInterval到达
+    // 如果网络错误发生，这个锁会立马进行重试;
     while (waitFor <= Milliseconds::zero() || Milliseconds(timer.millis()) < waitFor) {
-        const string who = str::stream() << _processID << ":" << getThreadName();
+        const string who = str::stream() <<_processID << ":" << getThreadName();
 
         auto lockExpiration = _lockExpiration;
         MONGO_FAIL_POINT_BLOCK(setDistLockTimeout, customTimeout) {
@@ -357,6 +370,7 @@ StatusWith<DistLockHandle> ReplSetDistLockManager::lockWithSessionID(OperationCo
         }
 
         // Get info from current lock and check if we can overtake it.
+        // 查找对应lock的信息
         auto getLockStatusResult = _catalog->getLockByName(txn, name);
         const auto& getLockStatus = getLockStatusResult.getStatus();
 
@@ -368,6 +382,7 @@ StatusWith<DistLockHandle> ReplSetDistLockManager::lockWithSessionID(OperationCo
         // found, use the normal grab lock path to acquire it.
         if (getLockStatusResult.isOK()) {
             auto currentLock = getLockStatusResult.getValue();
+            //判断当前的锁是否过期
             auto isLockExpiredResult = isLockExpired(txn, currentLock, lockExpiration);
 
             if (!isLockExpiredResult.isOK()) {
@@ -406,6 +421,7 @@ StatusWith<DistLockHandle> ReplSetDistLockManager::lockWithSessionID(OperationCo
 
         LOG(1) << "distributed lock '" << name << "' was not acquired.";
 
+        //表示不进行等待
         if (waitFor == Milliseconds::zero()) {
             break;
         }
@@ -420,7 +436,7 @@ StatusWith<DistLockHandle> ReplSetDistLockManager::lockWithSessionID(OperationCo
 
         // A new lock acquisition attempt will begin now (because the previous found the lock to be
         // busy, so reset the retries counter)
-        networkErrorRetries = 0;
+        networkErrorRetries = 0
 
         const Milliseconds timeRemaining =
             std::max(Milliseconds::zero(), waitFor - Milliseconds(timer.millis()));
@@ -464,6 +480,7 @@ StatusWith<DistLockHandle> ReplSetDistLockManager::tryLockWithLocalWriteConcern(
     return lockStatus.getStatus();
 }
 
+//根据lockSessionId来进行解锁
 void ReplSetDistLockManager::unlock(OperationContext* txn, const DistLockHandle& lockSessionID) {
     auto unlockStatus = _catalog->unlock(txn, lockSessionID);
 
@@ -488,6 +505,8 @@ void ReplSetDistLockManager::unlock(OperationContext* txn,
     }
 }
 
+
+//解开某一个进程的所有的lock
 void ReplSetDistLockManager::unlockAll(OperationContext* txn, const std::string& processID) {
     Status status = _catalog->unlockAll(txn, processID);
     if (!status.isOK()) {

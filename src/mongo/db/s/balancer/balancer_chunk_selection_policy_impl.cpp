@@ -67,6 +67,7 @@ StatusWith<DistributionStatus> createCollectionDistributionStatus(
 
     // Makes sure there is an entry in shardToChunksMap for every shard, so empty shards will also
     // be accounted for
+    // 构建所有shard的map
     for (const auto& stat : allShards) {
         shardToChunksMap[stat.shardId];
     }
@@ -339,9 +340,11 @@ BalancerChunkSelectionPolicyImpl::selectSpecificChunkToMove(OperationContext* op
     return BalancerPolicy::balanceSingleChunk(chunk, shardStats, distribution);
 }
 
+//newShardId: 就是目的shard
 Status BalancerChunkSelectionPolicyImpl::checkMoveAllowed(OperationContext* opCtx,
                                                           const ChunkType& chunk,
                                                           const ShardId& newShardId) {
+    //获得当前所有shard的参数配置和使用状态                                                          
     auto shardStatsStatus = _clusterStats->getStats(opCtx);
     if (!shardStatsStatus.isOK()) {
         return shardStatsStatus.getStatus();
@@ -349,6 +352,7 @@ Status BalancerChunkSelectionPolicyImpl::checkMoveAllowed(OperationContext* opCt
 
     auto shardStats = std::move(shardStatsStatus.getValue());
 
+    //每一次的movechunk之前都会进行一次强制的路由刷新，用来保证内存路由的正确性
     auto routingInfoStatus =
         Grid::get(opCtx)->catalogCache()->getShardedCollectionRoutingInfoWithRefresh(opCtx,
                                                                                      chunk.getNS());
@@ -358,6 +362,7 @@ Status BalancerChunkSelectionPolicyImpl::checkMoveAllowed(OperationContext* opCt
 
     const auto cm = routingInfoStatus.getValue().cm().get();
 
+    //chunk的整体分布的状态
     const auto collInfoStatus = createCollectionDistributionStatus(opCtx, shardStats, cm);
     if (!collInfoStatus.isOK()) {
         return collInfoStatus.getStatus();

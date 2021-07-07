@@ -91,6 +91,7 @@ ScopedMigrationRequest& ScopedMigrationRequest::operator=(ScopedMigrationRequest
     return *this;
 }
 
+// 将migration这个任务写入到config.migration
 StatusWith<ScopedMigrationRequest> ScopedMigrationRequest::writeMigration(
     OperationContext* txn, const MigrateInfo& migrateInfo, bool waitForDelete) {
 
@@ -100,7 +101,7 @@ StatusWith<ScopedMigrationRequest> ScopedMigrationRequest::writeMigration(
     for (int retry = 0; retry < kDuplicateKeyErrorMaxRetries; ++retry) {
         Status result = grid.catalogClient(txn)->insertConfigDocument(
             txn, MigrationType::ConfigNS, migrationType.toBSON(), kMajorityWriteConcern);
-
+        // 出现了key重复的问题
         if (result == ErrorCodes::DuplicateKey) {
             // If the exact migration described by "migrateInfo" is active, return a scoped object
             // for the request because this migration request will join the active one once
@@ -126,6 +127,7 @@ StatusWith<ScopedMigrationRequest> ScopedMigrationRequest::writeMigration(
             if (statusWithMigrationQueryResult.getValue().docs.empty()) {
                 // The document that caused the DuplicateKey error is no longer in the collection,
                 // so retrying the insert might succeed.
+                // 重新查一下，发现没有任何数据，说明刚才冲突了，现在又好了
                 continue;
             }
             invariant(statusWithMigrationQueryResult.getValue().docs.size() == 1);

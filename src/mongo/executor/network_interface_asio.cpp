@@ -312,12 +312,13 @@ Status NetworkInterfaceASIO::startCommand(const TaskExecutor::CallbackHandle& cb
 
         stdx::unique_lock<stdx::mutex> lk(_inProgressMutex);
 
+        //已经获得了连接了，所以去掉这个state中的统计;
         const auto eraseCount = _inGetConnection.erase(cbHandle);
 
         // If we didn't find the request, we've been canceled
         if (eraseCount == 0) {
             lk.unlock();
-
+            //如果删除的数目=0，那么回调被终止；
             onFinish({ErrorCodes::CallbackCanceled,
                       "Callback canceled",
                       now() - getConnectionStartTime});
@@ -343,12 +344,14 @@ Status NetworkInterfaceASIO::startCommand(const TaskExecutor::CallbackHandle& cb
 
         // Now that we're inProgress, an external cancel can touch our op, but
         // not until we release the inProgressMutex.
+        // 状态变成等待被处理中
         _inProgress.emplace(op, std::move(ownedOp));
 
         op->_cbHandle = std::move(cbHandle);
         op->_request = std::move(request);
         op->_onFinish = std::move(onFinish);
         op->_connectionPoolHandle = std::move(swConn.getValue());
+        //状态改变
         op->startProgress(getConnectionStartTime);
 
         // This ditches the lock and gets us onto the strand (so we're
@@ -358,7 +361,7 @@ Status NetworkInterfaceASIO::startCommand(const TaskExecutor::CallbackHandle& cb
             const auto timeout = op->_request.timeout;
             auto postTime = t.millis();
             if(postTime > 50){
-                 log()<<"nextStop to Network :"<<t.millis()<<"ms"<<",op="<<op->_request.toString();
+                 log()<<"nextStep to Network :"<<t.millis()<<"ms"<<",op="<<op->_request.toString();
             }
            
             // Set timeout now that we have the correct request object

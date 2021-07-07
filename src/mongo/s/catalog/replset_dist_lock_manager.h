@@ -140,12 +140,16 @@ private:
     // 2. Attempting to grab or overtake a lock resulted in an error where we are uncertain
     //    whether the modification was actually applied or not, and call unlock to make
     //    sure that it was cleaned up.
+    //存储了一些需要被unlock的操作，什么样子的会在这个队列中呢?
+    // 1. 第一次尝试unlock的时候结果失败的
+    // 2. 尝试去grab或者overtake 一个分布式锁，但是结果出现了错误，这个错误是模糊的，我们不知道的是成功还是失败，于是我们需要通过unlock来清空它
     std::deque<std::pair<DistLockHandle, boost::optional<std::string>>> _unlockList;  // (M)
 
     bool _isShutDown = false;              // (M)
     stdx::condition_variable _shutDownCV;  // (M)
 
     // Map of lockName to last ping information.
+    // lockName与对应ping信息的历史
     stdx::unordered_map<std::string, DistLockPingInfo> _pingHistory;  // (M)
 };
 

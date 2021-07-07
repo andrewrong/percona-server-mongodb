@@ -106,7 +106,7 @@ StatusWith<vector<ShardStatistics>> ClusterStatisticsImpl::getStats(OperationCon
     // Get a list of all the shards that are participating in this balance round along with any
     // maximum allowed quotas and current utilization. We get the latter by issuing
     // db.serverStatus() (mem.mapped) to all shards.
-    //
+    // 获得所有shard的一些配置参数和使用状态；通过使用serverStatus命令来进行，这也就是为什么日志中有那么多需要与shard进行交互的东西
     // TODO: skip unresponsive shards and mark information as stale.
     auto shardsStatus = Grid::get(txn)->catalogClient(txn)->getAllShards(
         txn, repl::ReadConcernLevel::kMajorityReadConcern);
