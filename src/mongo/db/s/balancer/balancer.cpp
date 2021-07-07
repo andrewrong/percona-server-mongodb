@@ -280,7 +280,7 @@ Status Balancer::moveSingleChunk(OperationContext* opCtx,
                                  uint64_t maxChunkSizeBytes,
                                  const MigrationSecondaryThrottleOptions& secondaryThrottle,
                                  bool waitForDelete) {
-    //检查当前的shard是否能被允许迁移
+    //这个movechunk是否合法
     auto moveAllowedStatus = _chunkSelectionPolicy->checkMoveAllowed(opCtx, chunk, newShardId);
     if (!moveAllowedStatus.isOK()) {
         return moveAllowedStatus;

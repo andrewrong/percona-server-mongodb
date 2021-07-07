@@ -237,6 +237,7 @@ Status MigrationManager::executeManualMigration(
 
     // Write a document to the config.migrations collection, in case this migration must be
     // recovered by the Balancer. Fail if the chunk is already moving.
+    // 写到migrations表中去
     auto statusWithScopedMigrationRequest =
         ScopedMigrationRequest::writeMigration(opCtx, migrateInfo, waitForDelete);
     if (!statusWithScopedMigrationRequest.isOK()) {
@@ -247,7 +248,7 @@ Status MigrationManager::executeManualMigration(
     RemoteCommandResponse remoteCommandResponse =
         _schedule(opCtx, migrateInfo, false, maxChunkSizeBytes, secondaryThrottle, waitForDelete)
             ->get();
-
+    //刷新一次路由
     auto routingInfoStatus =
         Grid::get(opCtx)->catalogCache()->getShardedCollectionRoutingInfoWithRefresh(
             opCtx, migrateInfo.ns);
@@ -506,6 +507,7 @@ void MigrationManager::drainActiveMigrations() {
     _state = State::kStopped;
 }
 
+//shardTakesCollectionDistLock 表示是否持有对应的collection的分布式锁
 shared_ptr<Notification<RemoteCommandResponse>> MigrationManager::_schedule(
     OperationContext* opCtx,
     const MigrateInfo& migrateInfo,
@@ -527,6 +529,7 @@ shared_ptr<Notification<RemoteCommandResponse>> MigrationManager::_schedule(
 
     // Sanity checks that the chunk being migrated is actually valid. These will be repeated at the
     // shard as well, but doing them here saves an extra network call, which might otherwise fail.
+    // 又一次路由刷新
     auto routingInfoStatus =
         Grid::get(opCtx)->catalogCache()->getShardedCollectionRoutingInfoWithRefresh(opCtx, nss);
     if (!routingInfoStatus.isOK()) {
@@ -536,6 +539,7 @@ shared_ptr<Notification<RemoteCommandResponse>> MigrationManager::_schedule(
 
     auto const chunkManager = routingInfoStatus.getValue().cm();
 
+    //找到对应要迁移的chunk
     auto chunk = chunkManager->findIntersectingChunkWithSimpleCollation(migrateInfo.minKey);
     invariant(chunk);
 
@@ -607,9 +611,11 @@ void MigrationManager::_scheduleWithDistLock_inlock(OperationContext* opCtx,
 
     const NamespaceString nss(migration.nss);
 
+    //当前node活跃的分布式中有没有
     auto it = _activeMigrationsWithDistLock.find(nss);
     if (it == _activeMigrationsWithDistLock.end()) {
         // Acquire the collection distributed lock (blocking call)
+        // 尝试去获得分布式锁
         auto distLockHandleStatus = acquireDistLock(opCtx, _lockSessionID, nss);
         if (!distLockHandleStatus.isOK()) {
             migration.completionNotification->set(distLockHandleStatus.getStatus());

@@ -289,6 +289,7 @@ private:
     // Used as a constant session ID for all distributed locks that this MigrationManager holds.
     // Currently required so that locks can be reacquired for the balancer in startRecovery and then
     // overtaken in later operations.
+    // 对于migration使用常量locksession;
     const OID _lockSessionID{OID::gen()};
 
     // Carries migration information over from startRecovery to finishRecovery. Should only be set
@@ -307,7 +308,7 @@ private:
 
     // Holds information about each collection's distributed lock and active migrations via a
     // CollectionMigrationState object.
-    // configsvr来维护分布式锁，只要锁住就好; 锁住了就不需要校验了；只是为了防止其他的configsvr相互竞争
+    // 用来维护每一个cm对应的分布式锁和活跃的movechunk的活动状态
     CollectionMigrationsStateMap _activeMigrationsWithDistLock;
 
     // Holds information about migrations, which have been scheduled without the collection

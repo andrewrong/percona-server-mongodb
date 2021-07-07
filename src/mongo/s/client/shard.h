@@ -134,7 +134,7 @@ public:
      * describes whether the operation that generated the given code was idempotent, which affects
      * which codes are safe to retry on.
      */
-    virtual bool isRetriableError(ErrorCodes::Error code, RetryPolicy options) = 0;
+    virtual bool isretriableerror(ErrorCodes::Error code, RetryPolicy options) = 0;
 
     /**
      * Runs the specified command returns the BSON command response plus parsed out Status of this

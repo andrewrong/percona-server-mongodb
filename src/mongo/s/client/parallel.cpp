@@ -87,7 +87,7 @@ struct ParallelConnectionState {
     std::shared_ptr<DBClientCursor> cursor;
 
     // Version information
-    std::shared_ptr<ChunkManager> manager;
+    std::shared_ptr<ChunkManagerEX> manager;
     std::shared_ptr<Shard> primary;
 
     // Cursor status information
@@ -342,7 +342,7 @@ void ParallelSortClusteredCursor::setupVersionAndHandleSlaveOk(
     std::shared_ptr<Shard> primary,
     const NamespaceString& ns,
     const string& vinfo,
-    std::shared_ptr<ChunkManager> manager) {
+    std::shared_ptr<ChunkManagerEX> manager) {
     if (manager) {
         state->manager = manager;
     } else if (primary) {
@@ -431,7 +431,7 @@ void ParallelSortClusteredCursor::startInit(OperationContext* opCtx) {
     }
     LOG(pc) << prefix << " pcursor over " << _qSpec << " and " << _cInfo;
 
-    shared_ptr<ChunkManager> manager;
+    shared_ptr<ChunkManagerEX> manager;
     shared_ptr<Shard> primary;
 
     {
@@ -466,6 +466,7 @@ void ParallelSortClusteredCursor::startInit(OperationContext* opCtx) {
     }
 
     // Close all cursors on extra shards first, as these will be invalid
+    // 关闭额外cursors的与shard的链接
     for (auto& cmEntry : _cursorMap) {
         const auto& shardId = cmEntry.first;
 

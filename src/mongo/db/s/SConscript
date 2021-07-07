@@ -46,6 +46,7 @@ env.Library(
     target='sharding',
     source=[
         'active_migrations_registry.cpp',
+        'auto_refresh_routing.cpp',
         'chunk_move_write_concern_options.cpp',
         'collection_sharding_state.cpp',
         'metadata_manager.cpp',
@@ -151,6 +152,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/db_raii',
         '$BUILD_DIR/mongo/db/dbhelpers',
         '$BUILD_DIR/mongo/db/repl/repl_coordinator_global',
+        '$BUILD_DIR/mongo/db/stats/apcounter',
         '$BUILD_DIR/mongo/s/serveronly',
         'balancer',
         'metadata',

@@ -199,7 +199,7 @@ env.Library(
         'balancer_configuration.cpp',
         'catalog_cache.cpp',
         'chunk.cpp',
-        'chunk_manager.cpp',
+        'chunk_manager_inlock.cpp',
         'cluster_identity_loader.cpp',
         'config_server_catalog_cache_loader.cpp',
         'config_server_client.cpp',
@@ -208,6 +208,7 @@ env.Library(
         'sharding_egress_metadata_hook.cpp',
     ],
     LIBDEPS=[
+        '$BUILD_DIR/mongo/db/storage/key_string',
         '$BUILD_DIR/mongo/db/audit',
         '$BUILD_DIR/mongo/db/lasterror',
         '$BUILD_DIR/mongo/db/repl/repl_coordinator_global',
@@ -217,6 +218,7 @@ env.Library(
         '$BUILD_DIR/mongo/util/concurrency/thread_pool',
         'client/sharding_client',
         'common',
+        '$BUILD_DIR/mongo/db/stats/apcounter',
     ],
 )
 
@@ -264,6 +266,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/auth/authmongos',
         '$BUILD_DIR/mongo/db/fts/ftsmongos',
         '$BUILD_DIR/mongo/db/stats/counters',
+        '$BUILD_DIR/mongo/db/stats/apcounter',
         '$BUILD_DIR/mongo/s/query/cluster_query',
         'cluster_last_error_info',
     ],

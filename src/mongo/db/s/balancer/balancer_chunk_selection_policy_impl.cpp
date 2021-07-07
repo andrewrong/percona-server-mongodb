@@ -62,28 +62,44 @@ namespace {
  * distribution and chunk placement information which is needed by the balancer policy.
  */
 StatusWith<DistributionStatus> createCollectionDistributionStatus(
-    OperationContext* opCtx, const ShardStatisticsVector& allShards, ChunkManager* chunkMgr) {
+    OperationContext* opCtx, const ShardStatisticsVector& allShards, ChunkManagerEX* chunkMgr) {
     ShardToChunksMap shardToChunksMap;
 
     // Makes sure there is an entry in shardToChunksMap for every shard, so empty shards will also
     // be accounted for
+    // 构建所有shard的map
     for (const auto& stat : allShards) {
         shardToChunksMap[stat.shardId];
     }
+    for (const auto& itTopIndex : chunkMgr->getTopIndexMap()) {
+        auto chunkMap = itTopIndex.second;
+        for (auto entry = chunkMap->begin(); entry != chunkMap->end(); ++entry) {
+            const auto& chunkEntry = entry->second;
 
-    for (const auto& entry : chunkMgr->chunkMap()) {
-        const auto& chunkEntry = entry.second;
+            ChunkType chunk;
+            chunk.setNS(chunkMgr->getns());
+            chunk.setMin(chunkEntry->getMin());
+            chunk.setMax(chunkEntry->getMax());
+            chunk.setJumbo(chunkEntry->isJumbo());
+            chunk.setShard(chunkEntry->getShardId());
+            chunk.setVersion(chunkEntry->getLastmod());
 
-        ChunkType chunk;
-        chunk.setNS(chunkMgr->getns());
-        chunk.setMin(chunkEntry->getMin());
-        chunk.setMax(chunkEntry->getMax());
-        chunk.setJumbo(chunkEntry->isJumbo());
-        chunk.setShard(chunkEntry->getShardId());
-        chunk.setVersion(chunkEntry->getLastmod());
-
-        shardToChunksMap[chunkEntry->getShardId()].push_back(chunk);
+            shardToChunksMap[chunkEntry->getShardId()].push_back(chunk);
+        }
     }
+    // for (const auto& entry : chunkMgr->chunkMap()) {
+    //     const auto& chunkEntry = entry.second;
+
+    //     ChunkType chunk;
+    //     chunk.setNS(chunkMgr->getns());
+    //     chunk.setMin(chunkEntry->getMin());
+    //     chunk.setMax(chunkEntry->getMax());
+    //     chunk.setJumbo(chunkEntry->isJumbo());
+    //     chunk.setShard(chunkEntry->getShardId());
+    //     chunk.setVersion(chunkEntry->getLastmod());
+
+    //     shardToChunksMap[chunkEntry->getShardId()].push_back(chunk);
+    // }
 
     vector<TagsType> collectionTags;
     Status tagsStatus = Grid::get(opCtx)->catalogClient(opCtx)->getTagsForCollection(
@@ -91,8 +107,7 @@ StatusWith<DistributionStatus> createCollectionDistributionStatus(
     if (!tagsStatus.isOK()) {
         return {tagsStatus.code(),
                 str::stream() << "Unable to load tags for collection " << chunkMgr->getns()
-                              << " due to "
-                              << tagsStatus.toString()};
+                              << " due to " << tagsStatus.toString()};
     }
 
     DistributionStatus distribution(NamespaceString(chunkMgr->getns()),
@@ -325,9 +340,11 @@ BalancerChunkSelectionPolicyImpl::selectSpecificChunkToMove(OperationContext* op
     return BalancerPolicy::balanceSingleChunk(chunk, shardStats, distribution);
 }
 
+//newShardId: 就是目的shard
 Status BalancerChunkSelectionPolicyImpl::checkMoveAllowed(OperationContext* opCtx,
                                                           const ChunkType& chunk,
                                                           const ShardId& newShardId) {
+    //获得当前所有shard的参数配置和使用状态                                                          
     auto shardStatsStatus = _clusterStats->getStats(opCtx);
     if (!shardStatsStatus.isOK()) {
         return shardStatsStatus.getStatus();
@@ -335,7 +352,7 @@ Status BalancerChunkSelectionPolicyImpl::checkMoveAllowed(OperationContext* opCt
 
     auto shardStats = std::move(shardStatsStatus.getValue());
 
-    //movechunk会主动刷新缓存
+    //每一次的movechunk之前都会进行一次强制的路由刷新，用来保证内存路由的正确性
     auto routingInfoStatus =
         Grid::get(opCtx)->catalogCache()->getShardedCollectionRoutingInfoWithRefresh(opCtx,
                                                                                      chunk.getNS());
@@ -345,6 +362,7 @@ Status BalancerChunkSelectionPolicyImpl::checkMoveAllowed(OperationContext* opCt
 
     const auto cm = routingInfoStatus.getValue().cm().get();
 
+    //chunk的整体分布的状态
     const auto collInfoStatus = createCollectionDistributionStatus(opCtx, shardStats, cm);
     if (!collInfoStatus.isOK()) {
         return collInfoStatus.getStatus();
@@ -451,12 +469,10 @@ StatusWith<MigrateInfoVector> BalancerChunkSelectionPolicyImpl::_getMigrateCandi
         if (chunkAtZoneMin->getMin().woCompare(tagRange.min)) {
             return {ErrorCodes::IllegalOperation,
                     str::stream()
-                        << "Tag boundaries "
-                        << tagRange.toString()
+                        << "Tag boundaries " << tagRange.toString()
                         << " fall in the middle of an existing chunk "
                         << ChunkRange(chunkAtZoneMin->getMin(), chunkAtZoneMin->getMax()).toString()
-                        << ". Balancing for collection "
-                        << nss.ns()
+                        << ". Balancing for collection " << nss.ns()
                         << " will be postponed until the chunk is split appropriately."};
         }
 
@@ -473,12 +489,10 @@ StatusWith<MigrateInfoVector> BalancerChunkSelectionPolicyImpl::_getMigrateCandi
             chunkAtZoneMax->getMax().woCompare(tagRange.max)) {
             return {ErrorCodes::IllegalOperation,
                     str::stream()
-                        << "Tag boundaries "
-                        << tagRange.toString()
+                        << "Tag boundaries " << tagRange.toString()
                         << " fall in the middle of an existing chunk "
                         << ChunkRange(chunkAtZoneMax->getMin(), chunkAtZoneMax->getMax()).toString()
-                        << ". Balancing for collection "
-                        << nss.ns()
+                        << ". Balancing for collection " << nss.ns()
                         << " will be postponed until the chunk is split appropriately."};
         }
     }

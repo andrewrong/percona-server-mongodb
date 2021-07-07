@@ -1,5 +1,4 @@
-/**
- *    Copyright (C) 2014 MongoDB Inc.
+/**    Copyright (C) 2014 MongoDB Inc.
  *
  *    This program is free software: you can redistribute it and/or  modify
  *    it under the terms of the GNU Affero General Public License, version 3,
@@ -52,6 +51,7 @@
 #include "mongo/s/stale_exception.h"
 #include "mongo/util/timer.h"
 #include "mongo/util/log.h"
+#include "mongo/db/stats/apcounter.h"
 #include "mongo/executor/async_timer_asio.h"
 namespace mongo {
 namespace {
@@ -93,7 +93,7 @@ public:
         auto routingInfo =
             uassertStatusOK(Grid::get(opCtx)->catalogCache()->getCollectionRoutingInfo(opCtx, nss));
 
-        shared_ptr<ChunkManager> chunkMgr;
+        shared_ptr<ChunkManagerEX> chunkMgr;
         shared_ptr<Shard> shard;
 
         if (!routingInfo.cm()) {
@@ -179,7 +179,6 @@ public:
         }
 
         const auto chunkMgr = routingInfo.cm();
-
         const BSONObj query = cmdObj.getObjectField("query");
 
         BSONObj collation;
@@ -202,12 +201,13 @@ public:
                 opCtx, chunkMgr.get(), chunk.get(), cmdObj.getObjectField("update").objsize());
         }
 
+
         return ok;
     }
 
 private:
     static StatusWith<BSONObj> _getShardKey(OperationContext* opCtx,
-                                            const ChunkManager& chunkMgr,
+                                            const ChunkManagerEX& chunkMgr,
                                             const BSONObj& query) {
         // Verify that the query has an equality predicate using the shard key
         StatusWith<BSONObj> status =
@@ -228,7 +228,7 @@ private:
     }
 
     static bool _runCommand(OperationContext* opCtx,
-                            shared_ptr<ChunkManager> chunkManager,
+                            shared_ptr<ChunkManagerEX> chunkManager,
                             const ShardId& shardId,
                             const NamespaceString& nss,
                             const BSONObj& cmdObj,
@@ -237,8 +237,10 @@ private:
 
         const auto shard =
             uassertStatusOK(Grid::get(opCtx)->shardRegistry()->getShard(opCtx, shardId));
-
+        Timer connectionTimer;
         ShardConnection conn(shard->getConnString(), nss.ns(), chunkManager);
+        auto getConnectionMs = connectionTimer.millis();
+
         Timer time;
         bool ok = conn->runCommand(nss.db().toString(), cmdObj, res);
         conn.done();
@@ -246,13 +248,17 @@ private:
         bool slow_log = false;
         if(optime > serverGlobalParams.slowMS){
             slow_log = true;
+            globalApCounter.gotFamSlowLog();
         }
 
         // ErrorCodes::RecvStaleConfig is the code for RecvStaleConfigException.
         if (!ok && res.getIntField("code") == ErrorCodes::RecvStaleConfig) {
             // Command code traps this exception and re-runs
             if(slow_log){
-                log()<<"FindAndModify err. target="<<shardId.toString()<<",ips:"<<shard->getConnString() <<" ;req="<<cmdObj.toString()<<" ;resp="<<res.toString()<<";optime="<< optime<<"ms";
+                log() << "[MongoStat] FindAndModify err. target=" << shardId.toString()
+                      << ",ips:" << shard->getConnString() << " ;req=" << cmdObj.toString()
+                      << " ;resp=" << res.toString() << ";optime=" << optime
+                      << "ms, get connection time:" << getConnectionMs << "ms";
             }
             throw RecvStaleConfigException("FindAndModify", res);
         }
@@ -263,8 +269,11 @@ private:
             appendWriteConcernErrorToCmdResponse(shardId, wcErrorElem, result);
         }
 
-        if(slow_log){
-            log()<<"FindAndModify ok. target="<<shardId.toString()<<",ips:" << shard->getConnString() << " ;req="<<cmdObj.toString()<<"  resp="<<res.toString()<<" optime="<< optime<<"ms";
+        if (slow_log) {
+            log() << "[MongoStat] FindAndModify ok. target=" << shardId.toString()
+                  << ",ips:" << shard->getConnString() << " ;req=" << cmdObj.toString()
+                  << "  resp=" << res.toString() << " optime=" << optime
+                  << "ms,get connection time:" << getConnectionMs << "ms";
         }
         result.appendElementsUnique(res);
 

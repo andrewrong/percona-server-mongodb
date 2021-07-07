@@ -28,11 +28,15 @@
 
 #pragma once
 
+#include <boost/thread/locks.hpp>
+#include <boost/thread/shared_mutex.hpp>
 #include <map>
 #include <set>
 #include <string>
 
+//#include "chunk_manager.h"
 #include "mongo/base/disallow_copying.h"
+#include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/s/chunk.h"
@@ -40,32 +44,87 @@
 #include "mongo/s/client/shard.h"
 #include "mongo/s/shard_key_pattern.h"
 #include "mongo/util/concurrency/ticketholder.h"
+#include <vector>
+//#include "chunk_manager.h"
 
 namespace mongo {
+
+
+
+
+// Map from a shard is to the max chunk version on that shard
+//using ShardVersionMap = std::map<ShardId, ChunkVersion>;
+
+// Ordered map from the max for each chunk to an entry describing the chunk
+
+using ChunkMapEX = std::map<std::string, std::shared_ptr<Chunk>>;
+
+// Map from a shard is to the max chunk version on that shard
+using ShardVersionMapEX = std::map<ShardId, ChunkVersion>;
+
+using TopIndexMap = std::map<std::string, std::shared_ptr<ChunkMapEX>>;
 
 class CanonicalQuery;
 struct QuerySolutionNode;
 class OperationContext;
 
-// Ordered map from the max for each chunk to an entry describing the chunk
-// 构建chunk的最大值与chunk之间的关系
-using ChunkMap = BSONObjIndexedMap<std::shared_ptr<Chunk>>;
+struct IteratorChunks {
+    int chunksSize;
+    StringBuilder info;
+    BSONArrayBuilder bson;
+    bool hashErr;
+    std::string errmsg;
+};
 
-// Map from a shard is to the max chunk version on that shard
-using ShardVersionMap = std::map<ShardId, ChunkVersion>;
+class ChunkManagerEX : public std::enable_shared_from_this<ChunkManagerEX> {
+    MONGO_DISALLOW_COPYING(ChunkManagerEX);
 
-class ChunkManager {
-    MONGO_DISALLOW_COPYING(ChunkManager);
 
 public:
-    ChunkManager(NamespaceString nss,
-                 KeyPattern shardKeyPattern,
-                 std::unique_ptr<CollatorInterface> defaultCollator,
-                 bool unique,
-                 ChunkMap chunkMap,
-                 ChunkVersion collectionVersion);
+    ChunkManagerEX(NamespaceString nss,
+                   KeyPattern shardKeyPattern,
+                   std::unique_ptr<CollatorInterface> defaultCollator,
+                   bool unique,
+                   ChunkVersion collectionVersion);
 
-    ~ChunkManager();
+    ChunkManagerEX(std::shared_ptr<ChunkManagerEX> other,
+                   NamespaceString nss,
+                   KeyPattern shardKeyPattern,
+                   std::unique_ptr<CollatorInterface> defaultCollator,
+                   bool unique
+                   );
+
+    ~ChunkManagerEX();
+
+
+    /**
+     * Makes an instance with a routing table for collection "nss", sharded on
+     * "shardKeyPattern".
+     *
+     * "defaultCollator" is the default collation for the collection, "unique" indicates whether
+     * or not the shard key for each document will be globally unique, and "epoch" is the globally
+     * unique identifier for this version of the collection.
+     *
+     * The "chunks" vector must contain the chunk routing information sorted in ascending order by
+     * chunk version, and adhere to the requirements of the routing table update algorithm.
+     */
+    static std::shared_ptr<ChunkManagerEX> makeNew(
+        NamespaceString nss,
+        KeyPattern shardKeyPattern,
+        std::unique_ptr<CollatorInterface> defaultCollator,
+        bool unique,
+        OID epoch,
+        const std::vector<ChunkType>& chunks);
+
+    static std::shared_ptr<ChunkManagerEX> copyAndUpdate(
+        std::shared_ptr<ChunkManagerEX> other,
+        NamespaceString nss,
+        KeyPattern shardKeyPattern,
+        std::unique_ptr<CollatorInterface> defaultCollator,
+        bool unique,
+        OID epoch,
+        const std::vector<ChunkType>& chunks);
+
 
     /**
      * Returns an increasing number of the reload sequence number of this chunk manager.
@@ -82,6 +141,7 @@ public:
         return _shardKeyPattern;
     }
 
+    //文档排序规则，默认ascii，也可以用中文，创建collection时传入
     const CollatorInterface* getDefaultCollator() const {
         return _defaultCollator.get();
     }
@@ -90,23 +150,20 @@ public:
         return _unique;
     }
 
-    ChunkVersion getVersion() const {
-        return _collectionVersion;
-    }
+    ChunkVersion getVersion() const;
 
     ChunkVersion getVersion(const ShardId& shardId) const;
 
-    const ChunkMap& chunkMap() const {
-        return _chunkMap;
+    void setMaxSizeSingleChunksMap(int maxSize){
+        _maxSizeSingleChunksMap = maxSize;
     }
 
-    int numChunks() const {
-        return _chunkMap.size();
-    }
+    int numChunks() const;
 
-    const ShardVersionMap& shardVersions() const {
-        return _chunkMapViews.shardVersions;
-    }
+    TopIndexMap getTopIndexMap() const {return _topIndexMap;}
+
+    ShardVersionMapEX getShardVersionMap(){return _shardVersions;}
+
 
     /**
      * Given a shard key (or a prefix) that has been extracted from a document, returns the chunk
@@ -127,6 +184,9 @@ public:
      * Same as findIntersectingChunk, but assumes the simple collation.
      */
     std::shared_ptr<Chunk> findIntersectingChunkWithSimpleCollation(const BSONObj& shardKey) const;
+
+ 
+
 
     /**
      * Finds the shard IDs for a given filter and collation. If collation is empty, we use the
@@ -172,55 +232,59 @@ public:
     /**
      * Returns true if, for this shard, the chunks are identical in both chunk managers
      */
-    bool compatibleWith(const ChunkManager& other, const ShardId& shard) const;
+    bool compatibleWith(const ChunkManagerEX& other, const ShardId& shard) const;
 
     std::string toString() const;
+
+    //按start和limit获取内存中的chunks信息，用来校验mongos的内存路由和configsvr中是否一致，内部使用
+    //print true时，打印整个路由信息到日志
+    std::shared_ptr<IteratorChunks> iteratorChunks(int start, int limit, bool print) const;
 
 private:
     friend class CollectionRoutingDataLoader;
 
     /**
-     * Represents a range of chunk keys [getMin(), getMax()) and the id of the shard on which they
-     * reside according to the metadata.
+     * Constructs a new instance with a routing table updated according to the changes described
+     * in "changedChunks".
+     *
+     * The changes in "changedChunks" must be sorted in ascending order by chunk version, and adhere
+     * to the requirements of the routing table update algorithm.
      */
-    struct ShardAndChunkRange {
-        const BSONObj& min() const {
-            return range.getMin();
-        }
+    std::shared_ptr<ChunkManagerEX> build(const std::vector<ChunkType>& changedChunks);
 
-        const BSONObj& max() const {
-            return range.getMax();
-        }
-
-        ChunkRange range;
-        ShardId shardId;
-    };
-
-    using ChunkRangeMap = BSONObjIndexedMap<ShardAndChunkRange>;
+    std::shared_ptr<ChunkManagerEX> makeUpdated(const std::vector<ChunkType>& changedChunks);
 
     /**
-     * Contains different transformations of the chunk map for efficient querying
+     * Does a single pass over the chunkMap and constructs the ShardVersionMap object.
      */
-    struct ChunkMapViews {
-        // Transformation of the chunk map containing what range of keys reside on which shard. The
-        // index is the max key of the respective range and the union of all ranges in a such
-        // constructed map must cover the complete space from [MinKey, MaxKey).
-        const ChunkRangeMap chunkRangeMap;
+    static ShardVersionMapEX _constructShardVersionMap(const OID& epoch,
+                                                     const ChunkMapEX& chunkMap,
+                                                     Ordering shardKeyOrdering);
 
+<<<<<<< HEAD:src/mongo/s/chunk_manager.h
         // Map from shard id to the maximum chunk version for that shard. If a shard contains no
         // chunks, it won't be present in this map.
         // 每一个shard对应当前shard最大的chunk版本;如果shard没有任何chunk你那么就不会出现在这个map中
         const ShardVersionMap shardVersions;
     };
+=======
+    std::string _extractKeyString(const BSONObj& shardKeyValue) const;
 
-    /**
-     * Does a single pass over the chunkMap and constructs the ChunkMapViews object.
-     */
-    static ChunkMapViews _constructChunkMapViews(const OID& epoch, const ChunkMap& chunkMap);
+
+    std::pair<TopIndexMap::const_iterator, TopIndexMap::const_iterator> _overlappingTopRanges(
+        const BSONObj& min, const BSONObj& max, bool isMaxInclusive) const;
+
+    std::pair<ChunkMapEX::const_iterator, ChunkMapEX::const_iterator> _overlappingRanges(
+        const BSONObj& min,
+        const BSONObj& max,
+        bool isMaxInclusive,
+        std::shared_ptr<ChunkMapEX> chunkMap) const;
+>>>>>>> mongo3.4:src/mongo/s/chunk_manager_inlock.h
+
 
     // The shard versioning mechanism hinges on keeping track of the number of times we reload
     // ChunkManagers.
-    const unsigned long long _sequenceNumber;
+    unsigned long long _sequenceNumber;
 
     // Namespace to which this routing information corresponds
     const NamespaceString _nss;
@@ -228,6 +292,8 @@ private:
     // The key pattern used to shard the collection
     // shardKey的策略，hash or range
     const ShardKeyPattern _shardKeyPattern;
+
+    const Ordering _shardKeyOrdering;
 
     // Default collation to use for routing data queries for this collection
     const std::unique_ptr<CollatorInterface> _defaultCollator;
@@ -237,8 +303,18 @@ private:
 
     // Map from the max for each chunk to an entry describing the chunk. The union of all chunks'
     // ranges must cover the complete space from [MinKey, MaxKey).
-    const ChunkMap _chunkMap;
+    //ChunkMap _chunkMap;
 
+    //第一级索引，key存放这个索引对应的ChunkMap中的max.
+    TopIndexMap _topIndexMap;
+    //_topIndexMap 中每个map最大值
+    int _maxSizeSingleChunksMap;
+    //每个shard对应的vesion
+    ShardVersionMapEX _shardVersions;
+
+    std::atomic<uint64_t> _shardVersionSize;
+
+<<<<<<< HEAD:src/mongo/s/chunk_manager.h
     // Different transformations of the chunk map for efficient querying
     // 为了有效的查询来包含不同的chunk map的变化
     const ChunkMapViews _chunkMapViews;
@@ -246,6 +322,12 @@ private:
     // Max version across all chunks
     // 当前管理的chunk的最大版本
     const ChunkVersion _collectionVersion;
+=======
+
+    // Max version across all chunks
+    ChunkVersion _collectionVersion;
+
+>>>>>>> mongo3.4:src/mongo/s/chunk_manager_inlock.h
 
     // Auto-split throttling state (state mutable by write commands)
     // 自动分裂
@@ -262,9 +344,10 @@ private:
 
     // This function needs to be able to access the auto-split throttle
     friend void updateChunkWriteStatsAndSplitIfNeeded(OperationContext*,
-                                                      ChunkManager*,
+                                                      ChunkManagerEX*,
                                                       Chunk*,
                                                       long);
-};
 
+    
+};
 }  // namespace mongo

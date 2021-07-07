@@ -53,6 +53,7 @@
 #include "mongo/util/net/ssl_manager.h"
 #include "mongo/util/table_formatter.h"
 #include "mongo/util/time_support.h"
+#include "mongo/util/timer.h"
 
 namespace mongo {
 namespace executor {
@@ -276,7 +277,7 @@ Status NetworkInterfaceASIO::startCommand(const TaskExecutor::CallbackHandle& cb
 
     auto nextStep = [this, getConnectionStartTime, cbHandle, request, onFinish](
         StatusWith<ConnectionPool::ConnectionHandle> swConn) {
-
+        //log()<<"nextStep call:"<<request.toString();
         if (!swConn.isOK()) {
             LOG(2) << "Failed to get connection from pool for request " << request.id << ": "
                    << swConn.getStatus();
@@ -311,12 +312,13 @@ Status NetworkInterfaceASIO::startCommand(const TaskExecutor::CallbackHandle& cb
         //一次只能操作一个命令进行提交; 理论上触发这个startCommand可能是多个
         stdx::unique_lock<stdx::mutex> lk(_inProgressMutex);
 
+        //已经获得了连接了，所以去掉这个state中的统计;
         const auto eraseCount = _inGetConnection.erase(cbHandle);
 
         // If we didn't find the request, we've been canceled
         if (eraseCount == 0) {
             lk.unlock();
-
+            //如果删除的数目=0，那么回调被终止；
             onFinish({ErrorCodes::CallbackCanceled,
                       "Callback canceled",
                       now() - getConnectionStartTime});
@@ -344,19 +346,26 @@ Status NetworkInterfaceASIO::startCommand(const TaskExecutor::CallbackHandle& cb
 
         // Now that we're inProgress, an external cancel can touch our op, but
         // not until we release the inProgressMutex.
+        // 状态变成等待被处理中
         _inProgress.emplace(op, std::move(ownedOp));
 
         op->_cbHandle = std::move(cbHandle);
         op->_request = std::move(request);
         op->_onFinish = std::move(onFinish);
         op->_connectionPoolHandle = std::move(swConn.getValue());
+        //状态改变
         op->startProgress(getConnectionStartTime);
 
         // This ditches the lock and gets us onto the strand (so we're
         // threadsafe)
-        op->_strand.post([this, op, getConnectionStartTime] {
+        Timer t;
+        op->_strand.post([this, op, getConnectionStartTime,t] {
             const auto timeout = op->_request.timeout;
-
+            auto postTime = t.millis();
+            if(postTime > 50){
+                 log()<<"nextStep to Network :"<<t.millis()<<"ms"<<",op="<<op->_request.toString();
+            }
+           
             // Set timeout now that we have the correct request object
             if (timeout != RemoteCommandRequest::kNoTimeout) {
                 // Subtract the time it took to get the connection from the pool from the request
@@ -369,6 +378,9 @@ Status NetworkInterfaceASIO::startCommand(const TaskExecutor::CallbackHandle& cb
                     // manually.
                     std::stringstream msg;
                     msg << "Remote command timed out while waiting to get a connection from the "
+                        << "pool, took " << getConnectionDuration << ", timeout was set to "
+                        << timeout;
+                    log()<< "Remote command timed out while waiting to get a connection from the "
                         << "pool, took " << getConnectionDuration << ", timeout was set to "
                         << timeout;
                     auto rs = ResponseStatus(ErrorCodes::NetworkInterfaceExceededTimeLimit,

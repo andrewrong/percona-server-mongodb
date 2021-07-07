@@ -69,6 +69,9 @@ public:
     using GetConnectionCallback = stdx::function<void(StatusWith<ConnectionHandle>)>;
 
     static constexpr Milliseconds kDefaultHostTimeout = Milliseconds(300000);  // 5mins
+
+    //默认不限制
+    static const size_t kDefaultRequestQueueLimit; 
     static const size_t kDefaultMaxConns;
     static const size_t kDefaultMinConns;
     static const size_t kDefaultMaxConnecting;
@@ -120,6 +123,11 @@ public:
          * 空闲模式下面的能存在的时间
          */
         Milliseconds hostTimeout = kDefaultHostTimeout;
+
+        /**
+         * 关于请求队列长度的限制;
+         */ 
+        size_t requestQueueLimits = kDefaultRequestQueueLimit;         
     };
 
     explicit ConnectionPool(std::unique_ptr<DependentTypeFactoryInterface> impl,
